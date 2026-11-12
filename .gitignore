@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+flask_session/
+.vscode/
+.idea/
+.DS_Store
+cloudflared.exe
+*.db
+
+# Security & Credentials
+*.pem
+*.key
+.env
+
+# Generated QR Codes & Temporary Uploads
+static/uploads/*
+!static/uploads/.gitkeep
+static/qrcodes/*
+!static/qrcodes/.gitkeep
+static/staff_qrcodes/*
+!static/staff_qrcodes/.gitkeep

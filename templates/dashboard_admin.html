@@ -2,424 +2,3286 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Admin Dashboard</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode/minified/html5-qrcode.min.js"></script>
-
-
-  <style>
-    body { font-family: 'Segoe UI', sans-serif; }
-    .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; z-index:1000; }
-    .modal-content { background:#fff; padding:20px; border-radius:16px; width:90%; max-width:450px; position:relative; box-shadow:0 8px 20px rgba(0,0,0,0.2); }
-    .close { position:absolute; top:10px; right:15px; font-size:20px; cursor:pointer; }
-    .fade-in { animation: fadeIn 0.5s ease forwards; }
-    .fade-out { animation: fadeOut 0.5s ease forwards; }
-    @keyframes fadeIn { from { opacity:0; transform:translateY(-10px);} to { opacity:1; transform:translateY(0);} }
-    @keyframes fadeOut { from { opacity:1; transform:translateY(0);} to { opacity:0; transform:translateY(-10px);} }
-    .dashboard-bg {
-      background: url("{{ url_for('static', filename='images/bambini_logo.png') }}") no-repeat center center;
-      background-size: 500px;
-      opacity: 0.05;
-      position: absolute;
-      inset: 0;
-      z-index: 0;
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Admin Console • Scuola dei Bambini</title>
+  <script src="{{ url_for('static', filename='js/tailwind.min.js') }}"></script>
+  <script>
+    if (typeof tailwind === "undefined") {
+      document.write('<script src="https://cdn.tailwindcss.com"><\/script>');
     }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Primary Local Html5Qrcode & jsQR Engines with CDN Fallbacks -->
+  <script src="{{ url_for('static', filename='js/html5-qrcode.min.js') }}"></script>
+  <script>
+    if (typeof Html5Qrcode === "undefined") {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/html5-qrcode/minified/html5-qrcode.min.js"><\/script>');
+    }
+  </script>
+  <script src="{{ url_for('static', filename='js/jsqr.min.js') }}"></script>
+  <script>
+    if (typeof jsQR === "undefined") {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"><\/script>');
+    }
+  </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'] },
+          colors: {
+            brand: {
+              50: '#faf5ff',
+              100: '#f3e8ff',
+              200: '#e9d5ff',
+              500: '#a855f7',
+              600: '#9333ea',
+              700: '#7e22ce',
+              800: '#6b21a8',
+              900: '#581c87'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
+
+    body { -webkit-tap-highlight-color: transparent; }
+    .page-watermark {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .04;
+      background: url("{{ url_for('static', filename='images/bambini_logo.png') }}") no-repeat center center;
+      background-size: min(65vw, 500px);
+    }
+    .modal-backdrop {
+      background: rgba(15, 23, 42, 0.65);
+      backdrop-filter: blur(4px);
+    }
+    .nav-tab {
+      transition: all 0.18s ease;
+    }
+    .nav-tab.active {
+      background: linear-gradient(135deg, #9333ea, #db2777);
+      color: #ffffff;
+      box-shadow: 0 6px 16px rgba(147, 51, 234, 0.28);
+    }
+    .nav-tab.active .nav-icon-box {
+      background: rgba(255, 255, 255, 0.2);
+      color: #ffffff;
+    }
+    .nav-tab.active .nav-subtext {
+      color: rgba(255, 255, 255, 0.82);
+    }
+    .nav-tab.active .nav-count-pill {
+      background: rgba(255, 255, 255, 0.22);
+      color: #ffffff;
+    }
+    /* Custom thin scrollbar for sidebar and tables */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.4); border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.65); }
   </style>
 </head>
-<body class="bg-gradient-to-r from-purple-50 to-pink-50">
 
+<body class="bg-gradient-to-br from-purple-50 via-pink-50/60 to-slate-50 font-sans text-slate-800 min-h-screen">
+  <div class="page-watermark"></div>
 
+  <!-- Mobile Sidebar Backdrop Overlay -->
+  <div id="sidebarBackdrop" onclick="toggleMobileSidebar(false)" class="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-xs hidden lg:hidden transition-opacity"></div>
 
-  <!-- Navigation -->
-  <nav class="flex flex-col space-y-2 p-4">
-    <a href="#" onclick="showSection('summarySection')" class="hover:bg-purple-800 p-2 rounded">📊 Dashboard</a>
-    <a href="#" onclick="showSection('topupsSection')" class="hover:bg-purple-800 p-2 rounded">💵 Pending Top-Ups</a>
-    <a href="#" onclick="showSection('studentsSection')" class="hover:bg-purple-800 p-2 rounded">🎓 Registered Students</a>
-    <a href="#" onclick="showSection('transactionsSection')" class="hover:bg-purple-800 p-2 rounded">📑 Transaction History</a>
-    <a href="#" onclick="showSection('chartsSection')" class="hover:bg-purple-800 p-2 rounded">📈 Charts</a>
-    <a href="#" onclick="showSection('unregisteredSection')" class="hover:bg-purple-800 p-2 rounded">👥 Unregistered Transactions</a>
-  </nav>
-</div>
-<!-- Main Content -->
-<div class="ml-64 p-6">
-  <h2 class="text-2xl font-bold text-purple-700">Welcome, Admin {{ admin.full_name }}</h2>
-  <p class="text-gray-600">Email: {{ admin.email }} | Contact: {{ admin.contact_number }}</p>
-  <!-- Summary Section -->
-  <div id="summarySection" class="section active">
-    <!-- Summary Cards -->
-    <div class="grid grid-cols-3 gap-6 mt-6">
-      <div class="bg-purple-100 p-4 rounded-lg shadow">
-        <h4 class="text-purple-800 font-semibold">Total Top-Ups (This Month)</h4>
-        <p class="text-2xl font-bold">₱{{ total_topups }}</p>
-      </div>
-      <div class="bg-teal-100 p-4 rounded-lg shadow">
-        <h4 class="text-teal-800 font-semibold">Total Money Received (This Month)</h4>
-        <p class="text-2xl font-bold">₱{{ total_received }}</p>
-      </div>
-      <div class="bg-orange-100 p-4 rounded-lg shadow">
-        <h4 class="text-orange-800 font-semibold">Total Sales (All Time)</h4>
-        <p class="text-2xl font-bold">₱{{ total_sales }}</p>
-      </div>
-    </div>
-
-    <!-- Search + Top-Up Form -->
-    <div class="grid grid-cols-2 gap-6 mt-6 items-start">
-      <!-- Search Students -->
-      <div class="bg-white p-4 rounded-lg shadow">
-        <h3 class="text-lg font-semibold mb-2">Search Students</h3>
-        <input type="text" id="studentSearch" placeholder="Search by name or School ID..."
-               class="w-full border rounded p-2 mb-4">
-        <table class="w-full border-collapse border border-gray-300">
-          <thead class="bg-gray-100">
-            <tr>
-              <th class="border p-2">School ID</th>
-              <th class="border p-2">Name</th>
-              <th class="border p-2">Balance</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for s in registered_students %}
-            <tr class="hover:bg-gray-50 cursor-pointer"
-                onclick="selectStudent('{{ s.school_id }}','{{ s.full_name }}','{{ s.balance }}')">
-              <td class="border p-2">{{ s.school_id }}</td>
-              <td class="border p-2">{{ s.full_name }}</td>
-              <td class="border p-2">₱{{ s.balance }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Manual Top-Up -->
-      <div class="bg-white p-4 rounded-lg shadow">
-        <h3 class="text-lg font-semibold mb-2">Manual Top-Up Form</h3>
-        <p><strong>Name:</strong> <span id="studentName">---</span></p>
-        <p><strong>School ID:</strong> <span id="studentId">---</span></p>
-        <p><strong>Current Balance:</strong> ₱<span id="currentBalance">0.00</span></p>
-        <label class="block mt-2">Top-Up Amount:</label>
-        <input type="number" id="topupAmount" oninput="updateBalance()" class="w-full border rounded p-2">
-        <p class="mt-2"><strong>New Balance:</strong> ₱<span id="newBalance">0.00</span></p>
-        <button onclick="confirmTopup()" class="mt-4 bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">
-          Confirm Top-Up
-        </button>
-      </div>
-    </div>
-  </div>
-  <!-- Pending Top-Ups -->
-  <div id="topupsSection" class="section hidden">
-    <div class="bg-white p-4 rounded-lg shadow mt-6">
-      <h3 class="text-lg font-semibold text-purple-700 mb-2">Pending Top-Ups</h3>
-      <input type="date" id="filterTopups" class="border rounded p-2 mb-4">
-      <table id="topupsTable" class="w-full border-collapse border border-gray-300">
-        <thead class="bg-purple-100">
-          <tr>
-            <th class="border p-2">ID</th>
-            <th class="border p-2">Student</th>
-            <th class="border p-2">Method</th>
-            <th class="border p-2">Amount</th>
-            <th class="border p-2">Reference #</th>
-            <th class="border p-2">Status</th>
-            <th class="border p-2">Date</th>
-            <th class="border p-2">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for t in pending_topups %}
-          <tr id="topup-{{ t.topup_id }}">
-            <td class="border p-2">{{ t.topup_id }}</td>
-            <td class="border p-2">{{ t.school_id }}</td>
-            <td class="border p-2">{{ t.method }}</td>
-            <td class="border p-2">₱{{ t.amount }}</td>
-            <td class="border p-2">{{ t.reference_number }}</td>
-            <td class="border p-2">{{ t.status }}</td>
-            <td class="border p-2">{{ t.created_at }}</td>
-            <td class="border p-2 space-x-2">
-              <button onclick="approveTopup({{ t.topup_id }})" class="bg-teal-600 text-white px-2 py-1 rounded">Approve</button>
-              <button onclick="rejectTopup({{ t.topup_id }})" class="bg-red-600 text-white px-2 py-1 rounded">Reject</button>
-            </td>
-          </tr>
-          {% else %}
-          <tr><td colspan="8" class="text-center p-2">No pending top-ups.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-  <!-- Registered Students -->
-  <div id="studentsSection" class="section hidden">
-    <div class="bg-white p-4 rounded-lg shadow mt-6">
-      <h3 class="text-lg font-semibold text-purple-700 mb-2">Registered Students</h3>
-      <input type="date" id="filterStudents" class="border rounded p-2 mb-4">
-      <table id="regStudentsTable" class="w-full border-collapse border border-gray-300">
-        <thead class="bg-purple-100">
-          <tr>
-            <th class="border p-2">Student ID</th>
-            <th class="border p-2">School ID</th>
-            <th class="border p-2">Name</th>
-            <th class="border p-2">Balance</th>
-            <th class="border p-2">Status</th>
-            <th class="border p-2">Registered</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for s in registered_students %}
-          <tr>
-            <td class="border p-2">{{ s.student_id }}</td>
-            <td class="border p-2">{{ s.school_id }}</td>
-            <td class="border p-2">{{ s.full_name }}</td>
-            <td class="border p-2">₱{{ s.balance }}</td>
-            <td class="border p-2">{{ s.status }}</td>
-            <td class="border p-2">{{ s.created_at }}</td>
-          </tr>
-          {% else %}
-          <tr><td colspan="6" class="text-center p-2">No registered students found.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-  <!-- Transaction History -->
-  <div id="transactionsSection" class="section hidden">
-    <div class="bg-white p-4 rounded-lg shadow mt-6">
-      <h3 class="text-lg font-semibold text-purple-700 mb-2">Transaction History</h3>
-      <input type="date" id="filterTransactions" class="border rounded p-2 mb-4">
-      <table id="transactionsTable" class="w-full border-collapse border border-gray-300">
-        <thead class="bg-purple-100">
-          <tr>
-            <th class="border p-2">Student</th>
-            <th class="border p-2">Customer</th>
-            <th class="border p-2">Amount</th>
-            <th class="border p-2">Type</th>
-            <th class="border p-2">Status</th>
-            <th class="border p-2">Date</th>
-            <th class="border p-2">Staff</th>
-            <th class="border p-2">Remarks</th>
-            <th class="border p-2">Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for tx in transactions %}
-          <tr id="txn-{{ tx.transaction_id }}" class="hover:bg-gray-50">
-            <td class="border p-2">{{ tx.student_name }}</td>
-            <td class="border p-2">{{ tx.customer_name }}</td>
-            <td class="border p-2">₱{{ tx.amount }}</td>
-            <td class="border p-2">
-              {{ tx.type }}
-              {% if tx.remarks and "Reversal" in tx.remarks %}
-              <span class="ml-2 px-2 py-1 text-xs bg-red-100 text-red-600 rounded">Reversed</span>
-              {% endif %}
-            </td>
-            <td class="border p-2">{{ tx.status }}</td>
-            <td class="border p-2">{{ tx.created_at }}</td>
-            <td class="border p-2">{{ tx.staff_name }}</td>
-            <td class="border p-2">{{ tx.remarks }}</td>
-            <td class="border p-2">
-              {% if tx.type == 'topup' and not (tx.remarks and "Reversal" in tx.remarks) %}
-              <button onclick="reverseTopup({{ tx.transaction_id }})"
-                      class="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-500">Undo</button>
-              {% else %}
-              <span class="text-gray-400 text-xs">No action</span>
-              {% endif %}
-            </td>
-          </tr>
-          {% else %}
-          <tr><td colspan="9" class="text-center p-2">No transactions found.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-  <!-- Charts Section -->
-  <div id="chartsSection" class="section hidden">
-    <div class="bg-white p-4 rounded-lg shadow mt-6">
-      <h3 class="text-lg font-semibold text-purple-700 mb-4">Charts Overview</h3>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div class="bg-gray-50 p-4 rounded-lg shadow">
-          <h4 class="text-sm font-semibold mb-2">Top-Ups vs Purchases</h4>
-          <canvas id="txnChart" class="w-full h-64"></canvas>
-        </div>
-        <div class="bg-gray-50 p-4 rounded-lg shadow">
-          <h4 class="text-sm font-semibold mb-2">Student Registrations</h4>
-          <canvas id="regChart" class="w-full h-64"></canvas>
-        </div>
-        <div class="bg-gray-50 p-4 rounded-lg shadow">
-          <h4 class="text-sm font-semibold mb-2">Active vs Inactive Students</h4>
-          <canvas id="statusChart" class="w-full h-64"></canvas>
-        </div>
-        <div class="bg-gray-50 p-4 rounded-lg shadow">
-          <h4 class="text-sm font-semibold mb-2">Payment Distribution</h4>
-          <canvas id="staffChart" class="w-full h-64"></canvas>
+  <!-- ================= HIERARCHICAL LEFT SIDE NAVIGATION BAR ================= -->
+  <aside id="adminSidebar" class="fixed inset-y-0 left-0 z-50 w-72 bg-white/95 backdrop-blur-md border-r border-purple-100/90 shadow-xl lg:shadow-md flex flex-col transform -translate-x-full lg:translate-x-0 transition-transform duration-200 ease-in-out">
+    
+    <!-- 1. Brand Identity Header -->
+    <div class="h-20 px-5 bg-gradient-to-r from-purple-300/90 to-pink-300/90 border-b border-purple-200/80 flex items-center justify-between shrink-0">
+      <div class="flex items-center gap-3 min-w-0">
+        <img src="{{ url_for('static', filename='images/bambini_logo.png') }}" alt="Logo" class="w-11 h-11 rounded-full ring-2 ring-white shadow-md shrink-0">
+        <div class="leading-tight truncate">
+          <p class="text-sm font-extrabold text-slate-900 tracking-tight truncate">Scuola dei Bambini</p>
+          <p class="text-[11px] font-bold text-purple-950 uppercase tracking-wider mt-0.5">Administrator Console</p>
         </div>
       </div>
+      <button type="button" onclick="toggleMobileSidebar(false)" class="lg:hidden p-1.5 rounded-lg text-slate-700 hover:bg-white/50">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
     </div>
-  </div>
-  <!-- Unregistered Transactions Section -->
-  <div id="unregisteredSection" class="section hidden">
-    <div class="bg-white p-4 rounded-lg shadow mt-6">
-      <h3 class="text-lg font-semibold text-purple-700 mb-2">Unregistered Transactions</h3>
-      <input type="date" id="filterUnregistered" class="border rounded p-2 mb-4">
-      <table id="unregisteredTable" class="w-full border-collapse border border-gray-300">
-        <thead class="bg-purple-100">
-          <tr>
-            <th class="border p-2">ID</th>
-            <th class="border p-2">Customer</th>
-            <th class="border p-2">Amount</th>
-            <th class="border p-2">Payment Mode</th>
-            <th class="border p-2">Status</th>
-            <th class="border p-2">Date</th>
-            <th class="border p-2">Staff</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for u in unregistered_transactions %}
-          <tr>
-            <td class="border p-2">{{ u.transaction_id }}</td>
-            <td class="border p-2">{{ u.customer_name }}</td>
-            <td class="border p-2">₱{{ u.amount }}</td>
-            <td class="border p-2">{{ u.payment_mode }}</td>
-            <td class="border p-2">{{ u.status }}</td>
-            <td class="border p-2">{{ u.created_at }}</td>
-            <td class="border p-2">{{ u.staff_name }}</td>
-          </tr>
-          {% else %}
-          <tr><td colspan="7" class="text-center p-2">No unregistered transactions found.</td></tr>
+
+    <!-- 2. Hierarchical Navigation Menu (Ordered by Administrative Priority) -->
+    <nav class="flex-1 overflow-y-auto px-3.5 py-4 space-y-5" id="adminTabNav" aria-label="Admin Hierarchy Navigation">
+
+      <!-- LEVEL 1: EXECUTIVE OVERVIEW -->
+      <div>
+        <div class="px-3 mb-2 flex items-center justify-between">
+          <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Executive Overview</span>
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Live Metrics Active"></span>
+        </div>
+        <div class="space-y-1">
+          <button
+            type="button"
+            data-target="chartsSection"
+            data-category="Executive Overview"
+            data-title="Dashboard & Analytics"
+            data-subtitle="High-level financial KPIs, trend charts, and real-time school wallet performance"
+            onclick="switchNavSection('chartsSection', this)"
+            class="nav-tab active w-full px-3 py-2.5 rounded-xl text-left flex items-center gap-3 group"
+          >
+            <div class="nav-icon-box w-9 h-9 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center shrink-0 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+            </div>
+            <div class="min-w-0 flex-1">
+              <p class="text-xs font-bold leading-snug truncate">Dashboard & Analytics</p>
+              <p class="nav-subtext text-[10px] text-slate-400 truncate">KPIs, trends & insights</p>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- LEVEL 2: WALLET OPERATIONS -->
+      <div>
+        <div class="px-3 mb-2">
+          <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Wallet Operations</span>
+        </div>
+        <div class="space-y-1">
+          <button
+            type="button"
+            data-target="topupsSection"
+            data-category="Wallet Operations"
+            data-title="Pending Top-Up Requests"
+            data-subtitle="Verify student GCash screenshots and approve or reject online top-up submissions"
+            onclick="switchNavSection('topupsSection', this)"
+            class="nav-tab w-full px-3 py-2.5 rounded-xl text-left flex items-center gap-3 text-slate-700 hover:bg-slate-100/80 group"
+          >
+            <div class="nav-icon-box w-9 h-9 rounded-lg bg-slate-100 text-slate-600 group-hover:bg-purple-100 group-hover:text-purple-700 flex items-center justify-center shrink-0 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between gap-1">
+                <p class="text-xs font-bold leading-snug truncate">Pending Top-Ups</p>
+                <span id="adminPendingCountBadge" class="px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-extrabold shadow-xs {{ 'hidden' if pending_topups|length == 0 else '' }}">
+                  {{ pending_topups|length }}
+                </span>
+              </div>
+              <p class="nav-subtext text-[10px] text-slate-400 truncate">GCash approval queue</p>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- LEVEL 3: ACCOUNTS & DIRECTORY -->
+      <div>
+        <div class="px-3 mb-2">
+          <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Directory Management</span>
+        </div>
+        <div class="space-y-1">
+          <button
+            type="button"
+            data-target="studentsSection"
+            data-category="Directory Management"
+            data-title="Students Directory"
+            data-subtitle="Master registry of enrolled students, school IDs, wallet balances, and account statuses"
+            onclick="switchNavSection('studentsSection', this)"
+            class="nav-tab w-full px-3 py-2.5 rounded-xl text-left flex items-center gap-3 text-slate-700 hover:bg-slate-100/80 group"
+          >
+            <div class="nav-icon-box w-9 h-9 rounded-lg bg-slate-100 text-slate-600 group-hover:bg-purple-100 group-hover:text-purple-700 flex items-center justify-center shrink-0 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-7.5"/></svg>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between gap-1">
+                <p class="text-xs font-bold leading-snug truncate">Students Directory</p>
+                <span class="nav-count-pill px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold">
+                  {{ registered_students|length }}
+                </span>
+              </div>
+              <p class="nav-subtext text-[10px] text-slate-400 truncate">Enrolled student accounts</p>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- LEVEL 4: FINANCIAL LEDGERS & AUDIT -->
+      <div>
+        <div class="px-3 mb-2">
+          <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Ledgers & Auditing</span>
+        </div>
+        <div class="space-y-1.5">
+          <button
+            type="button"
+            data-target="transactionsSection"
+            data-category="Ledgers & Auditing"
+            data-title="Transaction Ledger"
+            data-subtitle="Complete chronological audit trail of all top-ups, canteen purchases, and reversals"
+            onclick="switchNavSection('transactionsSection', this)"
+            class="nav-tab w-full px-3 py-2.5 rounded-xl text-left flex items-center gap-3 text-slate-700 hover:bg-slate-100/80 group"
+          >
+            <div class="nav-icon-box w-9 h-9 rounded-lg bg-slate-100 text-slate-600 group-hover:bg-purple-100 group-hover:text-purple-700 flex items-center justify-center shrink-0 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between gap-1">
+                <p class="text-xs font-bold leading-snug truncate">Transaction Ledger</p>
+                <span class="nav-count-pill px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold">
+                  {{ transactions|length }}
+                </span>
+              </div>
+              <p class="nav-subtext text-[10px] text-slate-400 truncate">Full financial audit log</p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            data-target="unregisteredSection"
+            data-category="Ledgers & Auditing"
+            data-title="Unregistered & Walk-In Sales"
+            data-subtitle="Counter cash and GCash transactions recorded for visitors and non-registered buyers"
+            onclick="switchNavSection('unregisteredSection', this)"
+            class="nav-tab w-full px-3 py-2.5 rounded-xl text-left flex items-center gap-3 text-slate-700 hover:bg-slate-100/80 group"
+          >
+            <div class="nav-icon-box w-9 h-9 rounded-lg bg-slate-100 text-slate-600 group-hover:bg-purple-100 group-hover:text-purple-700 flex items-center justify-center shrink-0 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+            </div>
+            <div class="min-w-0 flex-1">
+              <p class="text-xs font-bold leading-snug truncate">Unregistered Sales</p>
+              <p class="nav-subtext text-[10px] text-slate-400 truncate">Walk-in & visitor orders</p>
+            </div>
+          </button>
+        </div>
+      </div>
+
+    </nav>
+
+    <!-- 3. Sidebar Footer: Administrator Profile & Logout -->
+    <div class="p-3.5 border-t border-purple-100 bg-purple-50/50 shrink-0">
+      <div class="bg-white rounded-xl p-3 border border-purple-100/80 shadow-xs flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-9 h-9 rounded-full bg-gradient-to-br from-purple-600 to-pink-600 text-white font-extrabold text-xs flex items-center justify-center shadow-xs shrink-0">
+            {{ (admin.full_name or 'A')[0]|upper }}
+          </div>
+          <div class="min-w-0 leading-tight">
+            <p class="text-xs font-extrabold text-slate-900 truncate">{{ admin.full_name }}</p>
+            <p class="text-[10px] font-semibold text-purple-700 truncate">System Administrator</p>
+          </div>
+        </div>
+        <a
+          href="{{ url_for('logout') }}"
+          title="Sign Out"
+          class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/70 rounded-lg transition shrink-0"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+          <span>Logout</span>
+        </a>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ================= RIGHT WORKSPACE WRAPPER ================= -->
+  <div class="lg:pl-72 min-h-screen flex flex-col relative z-10">
+
+    <!-- Top Workspace Context Bar (Breadcrumb + Quick Actions) -->
+    <header class="sticky top-0 z-30 bg-white/85 backdrop-blur-md border-b border-purple-100 shadow-xs">
+      <div class="w-full px-4 sm:px-6 lg:px-8 xl:px-10 h-16 flex items-center justify-between gap-4">
+        
+        <!-- Left: Mobile Drawer Trigger + Hierarchical Breadcrumb -->
+        <div class="flex items-center gap-3 min-w-0">
+          <button
+            type="button"
+            onclick="toggleMobileSidebar(true)"
+            class="lg:hidden p-2 rounded-xl bg-purple-50 text-purple-800 hover:bg-purple-100 border border-purple-200/70 transition shrink-0"
+            aria-label="Open Navigation Menu"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+          </button>
+
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              <span>Admin</span>
+              <span class="text-slate-300">/</span>
+              <span id="headerBreadcrumbCategory" class="truncate text-purple-700">Executive Overview</span>
+            </div>
+            <h1 id="headerSectionTitle" class="text-sm sm:text-base font-extrabold text-slate-900 truncate">
+              Dashboard & Analytics
+            </h1>
+          </div>
+        </div>
+
+        <!-- Right: Live Sync Status + Quick Operation Shortcuts -->
+        <div class="flex items-center gap-2.5 shrink-0">
+          <div class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200/80 text-[11px] font-bold text-emerald-800">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Live Sync</span>
+          </div>
+
+          <button
+            type="button"
+            onclick="focusManualTopup()"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold shadow-xs transition active:scale-95"
+            title="Go to Manual Cash Top-Up on Dashboard"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+            <span class="hidden sm:inline">Manual Top-Up</span>
+          </button>
+
+          <button
+            type="button"
+            onclick="switchNavSection('topupsSection')"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold shadow-xs transition active:scale-95"
+            title="View Pending Top-Up Requests"
+          >
+            <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span class="hidden md:inline">Pending</span>
+            <span id="headerPendingQuickBadge" class="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[10px] font-extrabold {{ 'hidden' if pending_topups|length == 0 else '' }}">
+              {{ pending_topups|length }}
+            </span>
+          </button>
+        </div>
+
+      </div>
+    </header>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="w-full px-4 sm:px-6 lg:px-8 xl:px-10 mt-4 space-y-2">
+          {% for category, message in messages %}
+            <div class="text-sm px-4 py-2.5 rounded-xl border flex items-center justify-between
+              {% if category == 'error' %}bg-rose-50 border-rose-200 text-rose-800
+              {% elif category == 'success' %}bg-emerald-50 border-emerald-200 text-emerald-800
+              {% else %}bg-purple-50 border-purple-200 text-purple-800{% endif %}">
+              <span>{{ message }}</span>
+              <button onclick="this.parentElement.remove()" class="text-slate-400 hover:text-slate-600 font-bold">&times;</button>
+            </div>
           {% endfor %}
-        </tbody>
-      </table>
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <!-- ================= MAIN HIERARCHICAL WORKSPACE ================= -->
+    <main class="w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-6 flex-1 flex flex-col gap-6">
+
+      <!-- FAR-LEFT DASHBOARD QUICK JUMP BAR (Connects Dashboard Button -> Left Sidebar Buttons) -->
+      <div id="adminLeftJumpBar" class="flex flex-wrap items-center justify-between gap-3 bg-white/95 backdrop-blur-md rounded-2xl p-3 sm:px-4 border border-purple-200/80 shadow-xs">
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            id="adminLeftJumpBtn"
+            onclick="triggerLeftSidebarJump()"
+            class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-800 hover:to-indigo-800 text-white text-xs font-extrabold shadow-sm transition active:scale-95 cursor-pointer ring-2 ring-purple-300/50"
+            title="Click to highlight and jump to the Left Sidebar navigation buttons"
+          >
+            <svg class="w-4 h-4 text-purple-200 animate-pulse" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/>
+            </svg>
+            <span>👈 Left Panel Sections</span>
+          </button>
+
+          <div id="adminLeftJumpTargets" class="flex flex-wrap items-center gap-1.5 pl-1 border-l border-slate-200">
+            <button type="button" onclick="jumpToLeftSidebarButton('topupsSection')" class="px-2.5 py-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200/70 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer">
+              <span>⏳</span>
+              <span>Pending Top-Ups</span>
+            </button>
+            <button type="button" onclick="jumpToLeftSidebarButton('studentsSection')" class="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-purple-100 text-slate-700 hover:text-purple-800 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer">
+              <span>🎓</span>
+              <span>Students Directory</span>
+            </button>
+            <button type="button" onclick="jumpToLeftSidebarButton('transactionsSection')" class="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-purple-100 text-slate-700 hover:text-purple-800 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer">
+              <span>📑</span>
+              <span>Transaction Ledger</span>
+            </button>
+            <button type="button" onclick="jumpToLeftSidebarButton('unregisteredSection')" class="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-purple-100 text-slate-700 hover:text-purple-800 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer">
+              <span>🛍️</span>
+              <span>Walk-In Sales</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="hidden xl:flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+          <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+          <span>Focused Executive View • Counter Workstation Collapsible</span>
+        </div>
+      </div>
+
+      <!-- TIER 1 HIERARCHY: Executive Financial KPI Strip (Always Visible) -->
+      <section aria-label="Executive Financial Summary" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        
+        <!-- KPI 1: Monthly Top-Ups -->
+        <div onclick="focusManualTopup()" class="bg-white rounded-2xl p-5 shadow-xs ring-1 ring-slate-200/80 hover:ring-purple-300 transition cursor-pointer flex items-center justify-between" title="Click to open Manual Cash Top-Up on Dashboard">
+          <div>
+            <p class="text-xs uppercase tracking-wider font-semibold text-slate-500">Monthly Top-Ups</p>
+            <p id="adminTotalTopupsVal" class="text-2xl font-extrabold text-slate-900 mt-1.5">₱{{ '%.2f'|format(total_topups|float) }}</p>
+            <p class="text-xs text-slate-400 mt-0.5">Credited to student wallets</p>
+          </div>
+          <div class="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+          </div>
+        </div>
+
+        <!-- KPI 2: Money Received -->
+        <div onclick="switchNavSection('transactionsSection')" class="bg-white rounded-2xl p-5 shadow-xs ring-1 ring-slate-200/80 hover:ring-purple-300 transition cursor-pointer flex items-center justify-between">
+          <div>
+            <p class="text-xs uppercase tracking-wider font-semibold text-slate-500">Money Received</p>
+            <p id="adminTotalReceivedVal" class="text-2xl font-extrabold text-slate-900 mt-1.5">₱{{ '%.2f'|format(total_received|float) }}</p>
+            <p class="text-xs text-slate-400 mt-0.5">Approved & collected total</p>
+          </div>
+          <div class="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+        </div>
+
+        <!-- KPI 3: Total Sales (All Time) -->
+        <div onclick="switchNavSection('transactionsSection')" class="bg-white rounded-2xl p-5 shadow-xs ring-1 ring-slate-200/80 hover:ring-purple-300 transition cursor-pointer flex items-center justify-between">
+          <div>
+            <p class="text-xs uppercase tracking-wider font-semibold text-slate-500">Total Sales (All Time)</p>
+            <p id="adminTotalSalesVal" class="text-2xl font-extrabold text-slate-900 mt-1.5">₱{{ '%.2f'|format(total_sales|float) }}</p>
+            <p class="text-xs text-slate-400 mt-0.5">Canteen POS purchases</p>
+          </div>
+          <div class="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+          </div>
+        </div>
+
+        <!-- KPI 4: Pending Top-Up Requests -->
+        <div onclick="switchNavSection('topupsSection')" class="bg-white rounded-2xl p-5 shadow-xs ring-1 {{ 'ring-amber-300 bg-amber-50/20' if pending_topups|length > 0 else 'ring-slate-200/80' }} hover:ring-purple-300 transition cursor-pointer flex items-center justify-between">
+          <div>
+            <p class="text-xs uppercase tracking-wider font-semibold text-slate-500">Pending Requests</p>
+            <p id="adminPendingCountCard" class="text-2xl font-extrabold text-slate-900 mt-1.5">
+              {{ pending_topups|length }}
+            </p>
+            <p class="text-xs text-slate-400 mt-0.5">Click to review & approve</p>
+          </div>
+          <div class="w-10 h-10 rounded-xl {{ 'bg-amber-100 text-amber-700' if pending_topups|length > 0 else 'bg-slate-100 text-slate-600' }} flex items-center justify-center shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ========================================================================= -->
+      <!-- LEVEL 01 SECTION: EXECUTIVE OVERVIEW & ANALYTICS (#chartsSection)        -->
+      <!-- ========================================================================= -->
+      <div id="chartsSection" class="admin-section space-y-6">
+
+        <!-- Primary Financial & Operational Charts Grid (Placed First for Zero-Clutter Executive View) -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+          <!-- CHART 1.1: Top-Ups vs Purchases Trends + Embedded Best-Selling Products -->
+          <div class="bg-white rounded-2xl ring-1 ring-slate-200/80 shadow-sm p-5 sm:p-6 flex flex-col">
+            <div>
+              <div class="flex flex-wrap items-start justify-between gap-2 mb-3">
+                <div>
+                  <h4 class="font-bold text-slate-900 text-sm sm:text-base">
+                    Top-Ups vs. Purchases
+                  </h4>
+                  <p class="text-[11px] text-slate-400 mt-0.5">Dual-axis cashflow comparison &amp; best-selling canteen products</p>
+                </div>
+                <!-- Interactive Series Filter Pills -->
+                <div class="inline-flex items-center bg-slate-100 p-1 rounded-xl text-[11px] font-bold">
+                  <button type="button" onclick="setTxnChartMode('both', this)" class="txn-mode-btn px-2.5 py-1 rounded-lg bg-white text-purple-700 shadow-xs transition">Dual Axis</button>
+                  <button type="button" onclick="setTxnChartMode('purchases', this)" class="txn-mode-btn px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 transition">Purchases</button>
+                  <button type="button" onclick="setTxnChartMode('topups', this)" class="txn-mode-btn px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 transition">Top-Ups</button>
+                </div>
+              </div>
+
+              <!-- Live Series Summary Strip -->
+              <div class="grid grid-cols-2 gap-2.5 mb-4 p-2.5 rounded-xl bg-slate-50 border border-slate-200/70 text-xs">
+                <div class="flex items-center justify-between px-2">
+                  <span class="flex items-center gap-1.5 text-slate-600 font-medium">
+                    <span class="w-2.5 h-2.5 rounded-full bg-purple-600"></span>
+                    <span>Wallet Top-Ups</span>
+                  </span>
+                  <span id="chartSumTopups" class="font-extrabold text-slate-900">₱{{ '%.2f'|format(total_topups|float) }}</span>
+                </div>
+                <div class="flex items-center justify-between px-2 border-l border-slate-200">
+                  <span class="flex items-center gap-1.5 text-slate-600 font-medium">
+                    <span class="w-2.5 h-2.5 rounded-full bg-pink-600"></span>
+                    <span>POS Purchases</span>
+                  </span>
+                  <span id="chartSumPurchases" class="font-extrabold text-slate-900">₱{{ '%.2f'|format(total_sales|float) }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="h-52 relative">
+              <canvas id="txnChart"></canvas>
+            </div>
+
+            <!-- CLEAN, COMPACT BEST-SELLING PRODUCTS SECTION INSIDE THE CHART -->
+            {% set rec_data = trending_recommendations if trending_recommendations is defined and trending_recommendations else {} %}
+            {% set top_s = rec_data.get('top_seller', {'name': 'Tapsilog', 'qty': 19, 'revenue': 1425.0, 'share_pct': 18.1, 'stock': 48, 'icon': '🍳', 'category': 'Main'}) %}
+            {% set top_list = rec_data.get('top_items', []) %}
+            {% set rec_list = rec_data.get('recommendations', []) %}
+            <div id="mabentaChartRecommendationBox" class="mt-4 pt-3.5 border-t border-slate-100 space-y-2.5">
+              <!-- Compact Header + Top Product Summary Strip -->
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-extrabold uppercase tracking-wider text-slate-700">Best-Selling Products</span>
+                  <span id="mabentaWindowLabel" class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-semibold">
+                    {{ rec_data.get('window_label', 'Top Canteen Items') }}
+                  </span>
+                </div>
+                <div id="mabentaTopSellerCard" class="inline-flex items-center gap-1.5 text-[11px] bg-amber-50/90 border border-amber-200/80 text-amber-900 px-2.5 py-0.5 rounded-lg">
+                  <span id="mabentaTopSellerIcon">{{ top_s.get('icon', '🍳') }}</span>
+                  <span class="font-semibold text-amber-700">#1 Best Seller:</span>
+                  <strong id="mabentaTopSellerName" class="font-extrabold text-slate-900">{{ top_s.get('name', 'Tapsilog') }}</strong>
+                  <span id="mabentaTopSellerMeta" class="text-slate-500">({{ top_s.get('qty', 0) }} sold)</span>
+                  {% if top_s.get('stock') is not none %}
+                  <span id="mabentaTopSellerStock" class="text-[10px] font-bold text-slate-600 border-l border-amber-200 pl-1.5">Stock: {{ top_s.get('stock') }}</span>
+                  {% endif %}
+                </div>
+              </div>
+
+              <!-- Clean 2x2 Grid of Top 4 Products -->
+              <div id="mabentaTopItemsList" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {% for item in top_list[:4] %}
+                <div class="p-2 rounded-xl bg-slate-50/80 border border-slate-200/60 flex flex-col gap-1">
+                  <div class="flex items-center justify-between gap-1.5 text-xs">
+                    <span class="font-bold text-slate-800 truncate">
+                      <span class="text-[10px] font-extrabold {{ 'text-amber-600' if loop.index == 1 else 'text-slate-400' }} mr-1">#{{ loop.index }}</span>{{ item.get('icon', '🍽️') }} {{ item.get('name') }}
+                    </span>
+                    <span class="font-extrabold text-slate-900 text-[11px] shrink-0">{{ item.get('qty', 0) }} sold</span>
+                  </div>
+                  <div class="w-full h-1.5 bg-slate-200/70 rounded-full overflow-hidden">
+                    <div class="h-full rounded-full {{ 'bg-amber-500' if loop.index == 1 else 'bg-purple-500' }}" style="width: {{ [item.get('share_pct', 10)|float * 2.5, 100]|min }}%"></div>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+
+              <!-- Single Concise Insight Line -->
+              <div id="mabentaRecommendationsList">
+                {% if rec_list %}
+                {% set first_rec = rec_list[0] %}
+                <div class="px-3 py-1.5 rounded-lg text-[11px] flex items-center justify-between gap-2 bg-purple-50/60 border border-purple-100 text-slate-700">
+                  <span class="truncate"><strong class="text-purple-900">Insight:</strong> {{ first_rec.get('text') }}</span>
+                </div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          <!-- CHART 1.2: Payment Tenders Breakdown (Stacked / Grouped Toggle + Tender Totals) -->
+          <div class="bg-white rounded-2xl ring-1 ring-slate-200/80 shadow-sm p-5 sm:p-6 flex flex-col">
+            <div>
+              <div class="flex flex-wrap items-start justify-between gap-2 mb-3">
+                <div>
+                  <h4 class="font-bold text-slate-900 text-sm sm:text-base">
+                    Payment Tenders Breakdown
+                  </h4>
+                  <p class="text-[11px] text-slate-400 mt-0.5">Completed orders by payment channel</p>
+                </div>
+                <div class="inline-flex items-center bg-slate-100 p-1 rounded-xl text-[11px] font-bold">
+                  <button type="button" onclick="setStaffChartGrouping(true, this)" class="staff-mode-btn px-2.5 py-1 rounded-lg bg-white text-purple-700 shadow-xs transition">Stacked</button>
+                  <button type="button" onclick="setStaffChartGrouping(false, this)" class="staff-mode-btn px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 transition">Grouped</button>
+                </div>
+              </div>
+
+              <!-- Live Tender Breakdown Strip -->
+              {% set sum_wallet = cashless_totals|sum %}
+              {% set sum_cash = manual_totals|sum %}
+              {% set sum_gcash = other_totals|sum %}
+              <div class="grid grid-cols-3 gap-2 mb-4 p-2.5 rounded-xl bg-slate-50 border border-slate-200/70 text-[11px]">
+                <div class="px-1.5">
+                  <div class="flex items-center gap-1 text-slate-500 font-medium">
+                    <span class="w-2 h-2 rounded-full bg-purple-600"></span>
+                    <span class="truncate">Campus Wallet</span>
+                  </div>
+                  <p id="chartSumWallet" class="font-extrabold text-slate-900 text-xs mt-0.5">₱{{ '%.2f'|format(sum_wallet|float) }}</p>
+                </div>
+                <div class="px-1.5 border-x border-slate-200">
+                  <div class="flex items-center gap-1 text-slate-500 font-medium">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <span class="truncate">Cash Tender</span>
+                  </div>
+                  <p id="chartSumCash" class="font-extrabold text-slate-900 text-xs mt-0.5">₱{{ '%.2f'|format(sum_cash|float) }}</p>
+                </div>
+                <div class="px-1.5">
+                  <div class="flex items-center gap-1 text-slate-500 font-medium">
+                    <span class="w-2 h-2 rounded-full bg-sky-500"></span>
+                    <span class="truncate">GCash / E-Wallet</span>
+                  </div>
+                  <p id="chartSumGcash" class="font-extrabold text-slate-900 text-xs mt-0.5">₱{{ '%.2f'|format(sum_gcash|float) }}</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex-1 min-h-[280px] relative">
+              <canvas id="staffChart"></canvas>
+            </div>
+          </div>
+
+          <!-- CHART 1.3: Student Registration History (Daily New Signups + Cumulative Growth Line) -->
+          <div class="bg-white rounded-2xl ring-1 ring-slate-200/80 shadow-sm p-5 sm:p-6 flex flex-col justify-between">
+            <div>
+              <div class="flex flex-wrap items-start justify-between gap-2 mb-3">
+                <div>
+                  <h4 class="font-bold text-slate-900 text-sm sm:text-base">
+                    Student Registration & Growth
+                  </h4>
+                  <p class="text-[11px] text-slate-400 mt-0.5">Daily enrollment and cumulative active count</p>
+                </div>
+                <span class="px-2.5 py-1 rounded-full bg-slate-100 text-[11px] font-bold text-slate-700">
+                  {{ registered_students|length }} Total Enrolled
+                </span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2.5 mb-4 p-2.5 rounded-xl bg-slate-50 border border-slate-200/70 text-xs">
+                <div class="flex items-center justify-between px-2">
+                  <span class="flex items-center gap-1.5 text-slate-600 font-medium">
+                    <span class="w-2.5 h-2.5 rounded-sm bg-purple-500"></span>
+                    <span>Daily New Signups</span>
+                  </span>
+                  <span class="font-extrabold text-slate-900">+{{ reg_counts|sum }}</span>
+                </div>
+                <div class="flex items-center justify-between px-2 border-l border-slate-200">
+                  <span class="flex items-center gap-1.5 text-slate-600 font-medium">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                    <span>Cumulative Active</span>
+                  </span>
+                  <span class="font-extrabold text-slate-900">{{ registered_students|length }} Students</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="h-64 relative">
+              <canvas id="regChart"></canvas>
+            </div>
+          </div>
+
+          <!-- CHART 1.4: Account Status Distribution (Doughnut with Center Metric + Health Breakdown) -->
+          {% set total_accts = (active_count|int) + (inactive_count|int) %}
+          {% set active_pct = (((active_count|int) / total_accts * 100)|round(0)|int) if total_accts > 0 else 100 %}
+          {% set total_wallet_float = registered_students|sum(attribute='balance') if registered_students else 0 %}
+          <div class="bg-white rounded-2xl ring-1 ring-slate-200/80 shadow-sm p-5 sm:p-6 flex flex-col justify-between">
+            <div class="flex flex-wrap items-start justify-between gap-2 mb-3">
+              <div>
+                <h4 class="font-bold text-slate-900 text-sm sm:text-base">
+                  Account Status & Wallet Float
+                </h4>
+                <p class="text-[11px] text-slate-400 mt-0.5">Account health & total campus balances</p>
+              </div>
+              <span class="px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-800">
+                {{ active_pct }}% Active Rate
+              </span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center my-auto py-2">
+              <!-- Left: Doughnut with Center Total Overlay -->
+              <div class="sm:col-span-6 h-56 relative flex items-center justify-center">
+                <canvas id="statusChart"></canvas>
+                <div class="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
+                  <span id="statusChartTotalCenter" class="text-2xl font-extrabold text-slate-900 leading-none">{{ total_accts }}</span>
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-1">Accounts</span>
+                </div>
+              </div>
+
+              <!-- Right: Status & Balance Breakdown Cards -->
+              <div class="sm:col-span-6 space-y-2">
+                <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                    <div>
+                      <p class="text-xs font-semibold text-slate-900">Active Students</p>
+                      <p class="text-[10px] text-slate-400">Cleared for QR POS</p>
+                    </div>
+                  </div>
+                  <span id="statusActiveCountLabel" class="text-sm font-bold text-slate-900">{{ active_count }}</span>
+                </div>
+
+                <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+                    <div>
+                      <p class="text-xs font-semibold text-slate-900">Inactive / Suspended</p>
+                      <p class="text-[10px] text-slate-400">Restricted accounts</p>
+                    </div>
+                  </div>
+                  <span id="statusInactiveCountLabel" class="text-sm font-bold text-slate-900">{{ inactive_count }}</span>
+                </div>
+
+                <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+                  <div>
+                    <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Combined Wallet Balances</p>
+                    <p class="text-sm font-extrabold text-slate-900 mt-0.5">₱{{ '%.2f'|format(total_wallet_float|float) }}</p>
+                  </div>
+                  <div class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+
+        <!-- ========================================================================= -->
+        <!-- MANUAL CASH TOP-UP WORKSTATION (Collapsible to Prevent Screen Overload)   -->
+        <!-- ========================================================================= -->
+        <section id="manualTopupSection" aria-label="Manual Cash Top-Up Workstation" class="space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-purple-900 via-purple-800 to-indigo-950 rounded-3xl p-5 sm:p-6 text-white shadow-md">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="px-2.5 py-0.5 rounded-full bg-white/20 backdrop-blur-md text-[10px] font-extrabold uppercase tracking-wider text-purple-200">Counter Station</span>
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Ready to Credit"></span>
+                <span class="text-[11px] text-emerald-300 font-bold">• Click Expand to Open Cash Deposit Counter</span>
+              </div>
+              <h3 class="text-lg sm:text-xl font-black mt-1 flex items-center gap-2">
+                <span>⚡</span>
+                <span>Manual Cash Top-Up</span>
+              </h3>
+              <p class="text-xs sm:text-sm text-purple-200 mt-0.5">Locate any enrolled student and deposit over-the-counter cash balance directly</p>
+            </div>
+            <div class="flex items-center flex-wrap gap-2.5">
+              <button type="button" id="btnToggleManualWorkstation" onclick="toggleManualWorkstation()" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/25 text-white font-extrabold text-xs sm:text-sm shadow-sm transition active:scale-95 cursor-pointer">
+                <span id="manualWorkstationToggleIcon">➕</span>
+                <span id="manualWorkstationToggleText">Open Counter Workstation</span>
+              </button>
+              <button type="button" id="btnToggleAdminScanner" onclick="expandManualWorkstation(); toggleAdminScanner();" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-black text-xs sm:text-sm shadow-md hover:shadow-lg transition active:scale-95 cursor-pointer ring-2 ring-emerald-300/40">
+                <svg class="w-4 h-4 sm:w-5 sm:h-5 text-white animate-pulse" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                </svg>
+                <span id="adminScannerBtnText">📷 Scan Student QR</span>
+              </button>
+            </div>
+          </div>
+
+          <div id="manualTopupWorkstationBody" class="hidden space-y-4 transition-all duration-300">
+          <!-- ========================================================================= -->
+          <!-- LIVE QR SCANNER STATION PANEL (Collapsible Viewfinder & Scanner Hardware) -->
+          <!-- ========================================================================= -->
+          <div id="adminScannerPanel" class="hidden bg-slate-900 rounded-3xl p-5 sm:p-7 text-white shadow-2xl ring-2 ring-emerald-500/40 transition-all duration-300">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                    Live Camera Viewfinder
+                  </span>
+                  <span class="text-xs text-slate-400 font-mono hidden sm:inline">• USB Barcode Gun Ready</span>
+                </div>
+                <h4 class="text-base sm:text-lg font-black text-white mt-1 flex items-center gap-2">
+                  <span>📷</span>
+                  <span>Quick QR Top-Up Scanner</span>
+                </h4>
+                <p class="text-xs text-slate-400 mt-0.5">Point camera at Student ID QR card or scan using handheld USB barcode gun</p>
+              </div>
+
+              <!-- Scanner Controls Toolbar -->
+              <div class="flex items-center flex-wrap gap-2">
+                <select id="adminCamSelect" onchange="switchAdminCamera(this.value)" class="text-xs bg-slate-800 border border-slate-700 text-slate-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-purple-400 focus:outline-none">
+                  <option value="">Detecting cameras...</option>
+                </select>
+
+                <button type="button" onclick="toggleAdminCamFlip()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold border border-slate-700 transition flex items-center gap-1.5" title="Flip camera horizontally">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+                  <span>Flip</span>
+                </button>
+
+                <input type="file" id="adminQrFileInput" accept="image/*" capture="environment" class="hidden" onchange="scanAdminQrFromFile(this)">
+                <button type="button" onclick="document.getElementById('adminQrFileInput').click()" class="px-3 py-2 bg-purple-700 hover:bg-purple-600 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm" title="Upload QR image or snap with phone camera">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                  <span>Upload / Photo</span>
+                </button>
+
+                <button type="button" id="btnAdminBeepToggle" onclick="toggleAdminScannerBeep()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold border border-slate-700 transition flex items-center gap-1.5" title="Toggle audio feedback">
+                  <span id="adminBeepIcon">🔊</span>
+                  <span id="adminBeepLabel">Sound On</span>
+                </button>
+
+                <button type="button" onclick="stopAdminScanner()" class="px-3 py-2 bg-rose-600/90 hover:bg-rose-600 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                  <span>Close Scanner</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-center mt-5">
+              <!-- Camera Viewport (7 Cols) -->
+              <div class="md:col-span-7 flex flex-col items-center justify-center">
+                
+                <!-- Desktop Digital Zoom Bar (Crucial for fixed-focus laptop webcams) -->
+                <div class="flex items-center justify-between w-full max-w-sm mb-2 px-1 text-xs">
+                  <span class="text-slate-300 font-bold flex items-center gap-1.5">
+                    <span>🔍</span>
+                    <span>Desktop Zoom:</span>
+                  </span>
+                  <div class="inline-flex items-center bg-slate-950 p-1 rounded-xl border border-slate-700 gap-1">
+                    <button type="button" onclick="setAdminCamZoom(1.0)" data-zoom="1.0" class="admin-zoom-btn px-2.5 py-1 rounded-lg text-xs font-black bg-emerald-600 text-white shadow-xs transition cursor-pointer">1x</button>
+                    <button type="button" onclick="setAdminCamZoom(1.5)" data-zoom="1.5" class="admin-zoom-btn px-2.5 py-1 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition cursor-pointer">1.5x</button>
+                    <button type="button" onclick="setAdminCamZoom(2.0)" data-zoom="2.0" class="admin-zoom-btn px-2.5 py-1 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition cursor-pointer" title="Best for Desktop Webcams">2x (Sharp)</button>
+                    <button type="button" onclick="setAdminCamZoom(2.5)" data-zoom="2.5" class="admin-zoom-btn px-2.5 py-1 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition cursor-pointer">2.5x</button>
+                  </div>
+                </div>
+
+                <div class="relative w-full max-w-sm aspect-square bg-slate-950 rounded-2xl overflow-hidden border-2 border-emerald-500/40 shadow-inner flex items-center justify-center">
+                  <!-- html5-qrcode attaches here -->
+                  <div id="adminQrReader" class="w-full h-full"></div>
+
+                  <!-- Scanning overlay animation when active -->
+                  <div id="adminScannerOverlay" class="pointer-events-none absolute inset-0 border-4 border-dashed border-purple-400/50 rounded-2xl flex items-center justify-center">
+                    <div class="w-3/4 h-3/4 border-2 border-emerald-400 rounded-xl relative shadow-[0_0_25px_rgba(52,211,153,0.35)]">
+                      <div class="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-pulse" style="top: 50%;"></div>
+                    </div>
+                  </div>
+
+                  <div id="adminScannerLoadingNotice" class="absolute inset-0 bg-slate-950/85 backdrop-blur-xs flex flex-col items-center justify-center text-slate-300 text-xs font-semibold gap-2 p-4 text-center">
+                    <svg class="w-8 h-8 text-emerald-400 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                    <span id="adminScannerLoadingText">Starting live camera feed...</span>
+                  </div>
+                </div>
+
+                <p id="adminScannerStatus" class="text-xs text-emerald-300 font-semibold mt-3 text-center">
+                  ⚡ Point camera at student's QR code on ID card or phone screen
+                </p>
+
+                <!-- Helpful Desktop Webcam Focus Tip -->
+                <div class="w-full max-w-sm mt-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-200 flex items-start gap-2">
+                  <span class="text-base shrink-0">💡</span>
+                  <span><b>Desktop Webcam Tip:</b> Webcams blur up close! Hold card <b>40–50 cm (arm's length) away</b> and click <b>2x (Sharp)</b> above. Or paste QR image with <b>Ctrl+V</b>!</span>
+                </div>
+
+                <div class="flex items-center gap-3 mt-1.5 text-[11px] text-slate-400 font-mono">
+                  <span id="adminCamResolutionBadge" class="flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    <span>Ready</span>
+                  </span>
+                  <span>•</span>
+                  <span>Dual Engine: BarcodeDetector + jsQR</span>
+                </div>
+              </div>
+
+              <!-- Scanner Info / Last Scanned Student / Help (5 Cols) -->
+              <div class="md:col-span-5 bg-slate-800/80 rounded-2xl p-5 border border-slate-700/80 space-y-4">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-700">
+                  <span class="text-xs font-bold uppercase tracking-wider text-purple-400">Scan Status</span>
+                  <span id="adminLastScannedTime" class="text-[11px] text-slate-400 font-mono">Waiting for scan...</span>
+                </div>
+
+                <div id="adminScanPreviewBox" class="p-4 rounded-xl bg-slate-900/90 border border-slate-700 space-y-2">
+                  <p class="text-xs text-slate-400">Last Scanned Student:</p>
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-purple-600/30 text-purple-300 border border-purple-500/40 flex items-center justify-center text-lg font-bold">
+                      🎓
+                    </div>
+                    <div>
+                      <h5 id="adminScanPreviewName" class="text-sm font-extrabold text-white">No student scanned yet</h5>
+                      <p id="adminScanPreviewId" class="text-xs text-slate-400 font-mono">Scan a QR code or upload photo</p>
+                    </div>
+                  </div>
+                  <div class="pt-2 flex items-center justify-between text-xs text-slate-300 border-t border-slate-800">
+                    <span>Current Balance:</span>
+                    <span id="adminScanPreviewBal" class="font-extrabold text-emerald-400">₱0.00</span>
+                  </div>
+
+                  <div class="pt-2 border-t border-slate-800">
+                    <label class="block text-[11px] text-slate-400 font-medium mb-1">Direct ID / Barcode Gun Override:</label>
+                    <div class="flex items-center gap-2">
+                      <input type="text" id="adminManualQrTestInput" placeholder="e.g. 2026001" class="text-xs bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white w-full focus:ring-1 focus:ring-purple-400 focus:outline-none" onkeydown="if(event.key==='Enter'){processStudentQrCode(this.value); this.value='';}">
+                      <button type="button" onclick="const el=document.getElementById('adminManualQrTestInput'); if(el && el.value){processStudentQrCode(el.value); el.value='';}" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shrink-0">
+                        Go
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Quick Tips -->
+                <div class="space-y-2 text-xs text-slate-400">
+                  <p class="flex items-start gap-2">
+                    <span class="text-emerald-400 font-bold">✓</span>
+                    <span><b>Auto-Focus:</b> Once scanned, cursor jumps straight to the Deposit Amount box.</span>
+                  </p>
+                  <p class="flex items-start gap-2">
+                    <span class="text-emerald-400 font-bold">✓</span>
+                    <span><b>Photo / File Upload:</b> Click "Upload / Photo" to select an image or snap high-res picture.</span>
+                  </p>
+                  <p class="flex items-start gap-2">
+                    <span class="text-emerald-400 font-bold">✓</span>
+                    <span><b>Barcode Gun:</b> Works with any standard USB handheld scanner — just pull trigger!</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+            
+            <!-- Left: Student Directory Lookup (7 Cols) -->
+            <div class="lg:col-span-7 bg-white rounded-3xl ring-1 ring-slate-200/80 shadow-md p-6 sm:p-8 flex flex-col justify-between min-h-[640px]">
+              <div class="space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                  <div>
+                    <span class="text-xs font-extrabold uppercase tracking-wider text-purple-700">Step 1 • Select Recipient</span>
+                    <h4 class="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2 mt-0.5">
+                      <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                      <span>Student Directory Lookup</span>
+                    </h4>
+                    <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Search, scan QR, or click any student row to pre-fill top-up</p>
+                  </div>
+                  <div class="relative w-full sm:w-80 flex items-center gap-2">
+                    <div class="relative w-full">
+                      <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                      </div>
+                      <input type="text" id="quickStudentSearch" onkeyup="filterDirectoryTable()" placeholder="Filter by name or School ID..." class="text-sm border border-slate-300 rounded-xl pl-10 pr-4 py-2.5 focus:ring-2 focus:ring-purple-400 focus:outline-none w-full shadow-sm">
+                    </div>
+                    <button type="button" onclick="toggleAdminScanner()" class="px-3 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl font-bold text-xs shrink-0 flex items-center gap-1.5 transition shadow-xs cursor-pointer" title="Open QR Camera Scanner">
+                      <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                      <span class="hidden sm:inline font-black">Scan</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="overflow-x-auto rounded-2xl border border-slate-200/80 max-h-[480px] overflow-y-auto">
+                  <table class="w-full text-left text-sm" id="adminStudentTable">
+                    <thead class="bg-purple-50 text-purple-900 font-bold sticky top-0 z-10 border-b border-purple-100">
+                      <tr>
+                        <th class="px-4 py-3.5 font-mono text-xs uppercase tracking-wider">School ID</th>
+                        <th class="px-4 py-3.5 text-xs uppercase tracking-wider">Student Name</th>
+                        <th class="px-4 py-3.5 text-right text-xs uppercase tracking-wider">Balance</th>
+                        <th class="px-4 py-3.5 text-center text-xs uppercase tracking-wider">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                      {% for s in registered_students %}
+                      <tr class="hover:bg-purple-50/60 transition cursor-pointer group" data-school-id="{{ s.school_id }}" data-student-id="{{ s.student_id }}" onclick="selectStudent('{{ s.school_id }}','{{ s.full_name }}','{{ s.balance }}')">
+                        <td class="px-4 py-3.5 font-mono text-slate-600 font-semibold group-hover:text-purple-700 transition">{{ s.school_id }}</td>
+                        <td class="px-4 py-3.5 font-bold text-slate-900 group-hover:text-purple-900 transition">{{ s.full_name }}</td>
+                        <td class="px-4 py-3.5 text-right font-black text-slate-900 text-sm student-bal-cell">₱{{ '%.2f'|format(s.balance|float) }}</td>
+                        <td class="px-4 py-3.5 text-center">
+                          <button type="button" class="px-3.5 py-1.5 bg-purple-100 group-hover:bg-purple-600 group-hover:text-white text-purple-800 rounded-xl font-bold text-xs transition shadow-sm">Select</button>
+                        </td>
+                      </tr>
+                      {% else %}
+                      <tr>
+                        <td colspan="4" class="px-4 py-12 text-center text-slate-400 text-sm">No students registered in directory.</td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="pt-4 mt-auto border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                <span>Tip: Click any student row to immediately pre-fill the top-up card</span>
+                <span class="font-bold text-slate-600">{{ registered_students|length }} students total</span>
+              </div>
+            </div>
+
+            <!-- Right: Interactive Manual Top-Up Form (5 Cols) -->
+            <div class="lg:col-span-5 bg-white rounded-3xl ring-1 ring-purple-100 shadow-lg p-6 sm:p-8 space-y-6 flex flex-col justify-between min-h-[640px]">
+              <div class="space-y-5">
+                <div class="border-b border-slate-100 pb-4">
+                  <span class="text-xs font-extrabold uppercase tracking-wider text-purple-700">Step 2 • Enter Deposit Amount</span>
+                  <h4 class="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2 mt-0.5">
+                    <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+                    <span>Manual Top-Up Form</span>
+                  </h4>
+                  <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Credit cash deposits directly to student balances</p>
+                </div>
+
+                <!-- Step 1 in Form: Student Search & Selection -->
+                <div class="space-y-2">
+                  <label for="studentSearchInput" class="block text-xs font-bold text-slate-700 uppercase tracking-wide">
+                    Locate & Select Student:
+                  </label>
+
+                  <!-- Live Autocomplete Search Input -->
+                  <div class="relative">
+                    <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    </div>
+                    <input type="text" id="studentSearchInput" placeholder="Type student name or School ID (e.g. 2026001)..."
+                      autocomplete="off"
+                      oninput="handleStudentSearch(this.value)"
+                      onfocus="handleStudentSearch(this.value)"
+                      class="w-full text-sm font-semibold text-slate-900 bg-white border border-slate-300 rounded-2xl pl-10 pr-9 py-3 focus:ring-2 focus:ring-purple-400 focus:outline-none transition shadow-sm">
+                    <button type="button" id="btnClearStudentSearch" onclick="clearStudentSearch()" class="hidden absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 font-bold text-base">
+                      ✕
+                    </button>
+
+                    <!-- Floating Live Search Dropdown Suggestions -->
+                    <div id="studentSearchResults" class="hidden absolute z-30 left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-purple-100 max-h-64 overflow-y-auto divide-y divide-slate-100">
+                      <!-- Populated dynamically via JS -->
+                    </div>
+                  </div>
+
+                  <!-- Quick Dropdown Fallback -->
+                  <div class="flex items-center gap-2 pt-1">
+                    <span class="text-xs text-slate-400 font-medium whitespace-nowrap">Or choose from list:</span>
+                    <select id="studentSelectDropdown" onchange="handleStudentDropdownChange(this)" class="w-full text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-purple-400 focus:outline-none transition">
+                      <option value="" selected disabled>-- Choose from all enrolled students --</option>
+                      {% for s in registered_students %}
+                      <option value="{{ s.school_id }}" data-student-id="{{ s.student_id }}" data-name="{{ s.full_name }}" data-balance="{{ s.balance }}">
+                        {{ s.full_name }} ({{ s.school_id }}) — ₱{{ '%.2f'|format(s.balance|float) }}
+                      </option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Selected Student Profile Card -->
+                <div id="targetStudentCard" class="bg-purple-50/70 rounded-2xl p-5 border border-purple-100 space-y-3 transition-all">
+                  <div class="flex items-start justify-between">
+                    <div>
+                      <div class="flex items-center gap-2">
+                        <p class="text-xs font-bold text-purple-700 uppercase tracking-wide">Target Student</p>
+                        <span id="targetStudentBadge" class="hidden px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-100 text-emerald-800">Ready to Credit</span>
+                      </div>
+                      <h4 class="text-lg font-black text-purple-950 mt-1" id="studentName">Select a student from the list above</h4>
+                      <p class="text-xs text-slate-500 font-mono mt-0.5" id="studentIdDisplay">ID: ---</p>
+                      <span id="studentId" class="hidden"></span>
+                    </div>
+                    <div id="targetStudentAvatar" class="w-12 h-12 rounded-2xl bg-purple-200 text-purple-800 flex items-center justify-center text-xl font-bold shadow-sm shrink-0">
+                      🎓
+                    </div>
+                  </div>
+
+                  <div class="pt-3 border-t border-purple-200/60 flex items-center justify-between text-sm">
+                    <span class="text-slate-600 font-medium">Current Balance:</span>
+                    <span class="text-lg font-black text-slate-900">₱<span id="currentBalance">0.00</span></span>
+                  </div>
+                </div>
+
+                <!-- Top-Up Input -->
+                <div class="space-y-4">
+                  <div>
+                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Top-Up Deposit Amount (₱):</label>
+                    <div class="relative">
+                      <span class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-xl font-black text-slate-400">₱</span>
+                      <input type="number" id="topupAmount" step="0.01" min="1" placeholder="0.00" oninput="updateBalancePreview()" class="w-full text-2xl font-black text-slate-900 border border-slate-300 rounded-2xl pl-10 pr-4 py-3.5 focus:ring-2 focus:ring-purple-400 focus:outline-none transition shadow-sm">
+                    </div>
+                  </div>
+
+                  <!-- Quick Preset Denomination Pills -->
+                  <div class="flex flex-wrap gap-2">
+                    {% for amt in [50, 100, 200, 500, 1000] %}
+                    <button type="button" onclick="setTopupAmount('{{ amt }}');" class="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-purple-100 text-slate-800 hover:text-purple-900 font-black text-xs sm:text-sm transition active:scale-95 shadow-sm border border-slate-200/60">
+                      +₱{{ amt }}
+                    </button>
+                    {% endfor %}
+                  </div>
+
+                  <!-- New Balance Live Calculation -->
+                  <div class="p-4 bg-emerald-50/80 rounded-2xl border border-emerald-200 flex items-center justify-between text-sm">
+                    <span class="text-emerald-900 font-bold">New Balance After Deposit:</span>
+                    <span class="text-xl font-black text-emerald-950">₱<span id="newBalance">0.00</span></span>
+                  </div>
+
+                  <!-- Inline Validation / Status Banner -->
+                  <div id="topupValidationMsg" class="hidden p-3 rounded-2xl text-xs font-bold border flex items-center gap-2"></div>
+                </div>
+              </div>
+
+              <!-- Submit Button pinned at bottom of card -->
+              <div class="pt-4">
+                <button id="btnConfirmTopup" onclick="confirmTopup()" class="w-full py-4 bg-gradient-to-r from-purple-600 via-purple-700 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-black text-base rounded-2xl shadow-lg hover:shadow-xl transition active:scale-98 flex items-center justify-center gap-2">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                  <span id="btnConfirmTopupText">Confirm & Credit Student</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+          </div>
+        </section>
+
+        <!-- Recent Activity Snapshot Table -->
+        <div class="bg-white rounded-2xl ring-1 ring-slate-200/80 shadow-sm p-5 sm:p-6">
+          <div class="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 mb-4">
+            <div>
+              <h3 class="text-sm font-bold text-slate-900">Recent System Transactions</h3>
+              <p class="text-xs text-slate-400">Latest completed activities across campus</p>
+            </div>
+            <button type="button" onclick="switchNavSection('transactionsSection')" class="text-xs font-semibold text-purple-700 hover:text-purple-900 flex items-center gap-1">
+              <span>View Full Ledger</span>
+              <span>→</span>
+            </button>
+          </div>
+          <div class="overflow-x-auto rounded-xl border border-slate-100">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-purple-50 text-purple-900 font-bold">
+                <tr>
+                  <th class="px-4 py-2.5">Txn ID</th>
+                  <th class="px-4 py-2.5">Student / Customer</th>
+                  <th class="px-4 py-2.5">Amount</th>
+                  <th class="px-4 py-2.5">Type</th>
+                  <th class="px-4 py-2.5">Handled By</th>
+                  <th class="px-4 py-2.5">Date</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                {% for tx in transactions[:6] %}
+                <tr class="hover:bg-purple-50/40 transition">
+                  <td class="px-4 py-2.5 font-mono text-slate-500">#{{ tx.transaction_id }}</td>
+                  <td class="px-4 py-2.5 font-semibold text-slate-900">{{ tx.customer_name or tx.student_name or 'Walk-in' }}</td>
+                  <td class="px-4 py-2.5 font-extrabold text-slate-900">₱{{ '%.2f'|format(tx.amount|float) }}</td>
+                  <td class="px-4 py-2.5">
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold {{ 'bg-purple-100 text-purple-800' if tx.type == 'topup' else 'bg-slate-100 text-slate-700' }} uppercase">
+                      {{ tx.type }}
+                    </span>
+                  </td>
+                  <td class="px-4 py-2.5 text-slate-600">{{ tx.staff_name or 'Admin' }}</td>
+                  <td class="px-4 py-2.5 text-slate-500">{{ tx.created_at }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="6" class="px-4 py-6 text-center text-slate-400">No recent transactions recorded.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+
+      <!-- ========================================================================= -->
+      <!-- LEVEL 02-B SECTION: PENDING TOP-UPS (#topupsSection)                     -->
+      <!-- ========================================================================= -->
+      <div id="topupsSection" class="admin-section hidden space-y-4">
+        <div class="bg-white rounded-2xl ring-1 ring-purple-100 shadow-md p-5 sm:p-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-purple-700">02 • Online Top-Up Verification Queue</span>
+              <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                <span>💵</span> Pending Top-Up Requests
+              </h3>
+              <p class="text-xs text-slate-500">Review online student GCash submissions and confirm payment verification</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <input type="date" id="filterTopupsDate" onchange="filterTopupsByDate()" class="text-xs border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-purple-400 focus:outline-none">
+            </div>
+          </div>
+
+          <div class="overflow-x-auto rounded-xl border border-slate-100 mt-4">
+            <table id="topupsTable" class="w-full text-left text-xs">
+              <thead class="bg-purple-50 text-purple-900 font-bold">
+                <tr>
+                  <th class="px-4 py-3">ID</th>
+                  <th class="px-4 py-3">Student School ID</th>
+                  <th class="px-4 py-3">Method</th>
+                  <th class="px-4 py-3">Amount</th>
+                  <th class="px-4 py-3">Reference #</th>
+                  <th class="px-4 py-3">Proof / Receipt</th>
+                  <th class="px-4 py-3">Submitted</th>
+                  <th class="px-4 py-3 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="adminPendingTopupsBody" class="divide-y divide-slate-100">
+                {% for t in pending_topups %}
+                <tr id="topup-{{ t.topup_id }}" class="hover:bg-purple-50/40 transition">
+                  <td class="px-4 py-3 font-mono text-slate-500 font-semibold">#{{ t.topup_id }}</td>
+                  <td class="px-4 py-3 font-bold text-purple-900">{{ t.school_id or ('Student #' ~ t.student_id) }}</td>
+                  <td class="px-4 py-3">
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-100 text-sky-800 uppercase">
+                      {{ t.method or t.payment_mode or 'GCash' }}
+                    </span>
+                  </td>
+                  <td class="px-4 py-3 font-extrabold text-slate-900 text-sm">₱{{ '%.2f'|format(t.amount|float) }}</td>
+                  <td class="px-4 py-3 font-mono text-slate-600">{{ t.reference_number or '---' }}</td>
+                  <td class="px-4 py-3">
+                    {% set proof = t.screenshot_path or t.proof_image %}
+                    {% if proof %}
+                      <button onclick="viewProof('/static/uploads/{{ proof }}')" class="px-2.5 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 font-bold rounded-lg text-[11px] transition">
+                        🖼️ View Proof
+                      </button>
+                    {% else %}
+                      <span class="text-slate-400 italic text-[11px]">No image</span>
+                    {% endif %}
+                  </td>
+                  <td class="px-4 py-3 text-slate-500 date-cell">{{ t.created_at }}</td>
+                  <td class="px-4 py-3 text-center space-x-1.5 whitespace-nowrap">
+                    <button onclick="approveTopup({{ t.topup_id }})" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm transition active:scale-95 text-[11px]">
+                      ✓ Approve
+                    </button>
+                    <button onclick="rejectTopup({{ t.topup_id }})" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg shadow-sm transition active:scale-95 text-[11px]">
+                      ✕ Reject
+                    </button>
+                  </td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="8" class="px-4 py-10 text-center text-slate-400">
+                    <span class="text-2xl block mb-1">🎉</span>
+                    No pending top-ups at this time. All submissions processed!
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========================================================================= -->
+      <!-- LEVEL 03 SECTION: REGISTERED STUDENTS DIRECTORY (#studentsSection)       -->
+      <!-- ========================================================================= -->
+      <div id="studentsSection" class="admin-section hidden space-y-4">
+        <div class="bg-white rounded-2xl ring-1 ring-purple-100 shadow-md p-5 sm:p-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-purple-700">03 • Enrolled Student Accounts</span>
+              <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                <span>🎓</span> Registered Students Directory ({{ registered_students|length }})
+              </h3>
+              <p class="text-xs text-slate-500">Comprehensive overview of all enrolled student accounts and wallet balances</p>
+            </div>
+            <input type="text" id="filterStudentsInput" onkeyup="filterRegStudents()" placeholder="Search name or ID..." class="text-xs border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-purple-400 focus:outline-none w-full sm:w-64">
+          </div>
+
+          <div class="overflow-x-auto rounded-xl border border-slate-100 mt-4">
+            <table id="regStudentsTable" class="w-full text-left text-xs">
+              <thead class="bg-purple-50 text-purple-900 font-bold">
+                <tr>
+                  <th class="px-4 py-3">Internal ID</th>
+                  <th class="px-4 py-3">School ID</th>
+                  <th class="px-4 py-3">Student Name</th>
+                  <th class="px-4 py-3 text-right">Available Balance</th>
+                  <th class="px-4 py-3 text-center">Status</th>
+                  <th class="px-4 py-3">Registered At</th>
+                  <th class="px-4 py-3 text-center">Quick Action</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                {% for s in registered_students %}
+                <tr class="hover:bg-purple-50/40 transition" data-school-id="{{ s.school_id }}">
+                  <td class="px-4 py-3 font-mono text-slate-500">#{{ s.student_id }}</td>
+                  <td class="px-4 py-3 font-mono font-bold text-purple-900">{{ s.school_id }}</td>
+                  <td class="px-4 py-3 font-semibold text-slate-900">{{ s.full_name }}</td>
+                  <td class="px-4 py-3 text-right font-extrabold text-slate-900 text-sm student-bal-cell">₱{{ '%.2f'|format(s.balance|float) }}</td>
+                  <td class="px-4 py-3 text-center">
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold {{ 'bg-emerald-100 text-emerald-800' if s.status == 'active' or not s.status else 'bg-slate-100 text-slate-600' }}">
+                      {{ s.status or 'active' }}
+                    </span>
+                  </td>
+                  <td class="px-4 py-3 text-slate-500">{{ s.created_at }}</td>
+                  <td class="px-4 py-3 text-center">
+                    <button
+                      type="button"
+                      onclick="quickTopupStudent('{{ s.school_id }}', '{{ s.full_name }}', '{{ s.balance }}')"
+                      class="px-2.5 py-1 rounded-lg bg-purple-100 hover:bg-purple-200 text-purple-800 font-bold text-[11px] transition"
+                    >
+                      💳 Top Up
+                    </button>
+                  </td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="7" class="px-4 py-8 text-center text-slate-400">No registered students found in database.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========================================================================= -->
+      <!-- LEVEL 04-A SECTION: TRANSACTION LEDGER (#transactionsSection)            -->
+      <!-- ========================================================================= -->
+      <div id="transactionsSection" class="admin-section hidden space-y-4">
+        <div class="bg-white rounded-2xl ring-1 ring-purple-100 shadow-md p-5 sm:p-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-purple-700">04 • Master Financial Audit Log</span>
+              <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                <span>📑</span> Complete Transaction Ledger
+              </h3>
+              <p class="text-xs text-slate-500">Audit trail of all purchases, top-ups, and balance adjustments</p>
+            </div>
+            <input type="text" id="filterTxnInput" onkeyup="filterTxnTable()" placeholder="Search transactions..." class="text-xs border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-purple-400 focus:outline-none w-full sm:w-64">
+          </div>
+
+          <div class="overflow-x-auto rounded-xl border border-slate-100 mt-4 max-h-[540px] overflow-y-auto">
+            <table id="transactionsTable" class="w-full text-left text-xs">
+              <thead class="bg-purple-50 text-purple-900 font-bold sticky top-0">
+                <tr>
+                  <th class="px-4 py-3">Txn ID</th>
+                  <th class="px-4 py-3">Student / Customer</th>
+                  <th class="px-4 py-3">Amount</th>
+                  <th class="px-4 py-3">Type</th>
+                  <th class="px-4 py-3">Status</th>
+                  <th class="px-4 py-3">Handled By</th>
+                  <th class="px-4 py-3">Remarks</th>
+                  <th class="px-4 py-3">Date</th>
+                  <th class="px-4 py-3 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                {% for tx in transactions %}
+                <tr id="txn-{{ tx.transaction_id }}" class="hover:bg-purple-50/40 transition">
+                  <td class="px-4 py-3 font-mono text-slate-500">#{{ tx.transaction_id }}</td>
+                  <td class="px-4 py-3 font-semibold text-slate-900">{{ tx.customer_name or tx.student_name or 'Walk-in' }}</td>
+                  <td class="px-4 py-3 font-extrabold text-slate-900">₱{{ '%.2f'|format(tx.amount|float) }}</td>
+                  <td class="px-4 py-3">
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold {{ 'bg-purple-100 text-purple-800' if tx.type == 'topup' else 'bg-slate-100 text-slate-700' }} uppercase">
+                      {{ tx.type }}
+                    </span>
+                  </td>
+                  <td class="px-4 py-3 status-cell">
+                    {% if tx.remarks and "Reversal" in tx.remarks %}
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-100 text-rose-700">Reversed</span>
+                    {% else %}
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">{{ tx.status }}</span>
+                    {% endif %}
+                  </td>
+                  <td class="px-4 py-3 text-slate-600">{{ tx.staff_name or 'Admin' }}</td>
+                  <td class="px-4 py-3 text-slate-500 remarks-cell">{{ tx.remarks or '---' }}</td>
+                  <td class="px-4 py-3 text-slate-500">{{ tx.created_at }}</td>
+                  <td class="px-4 py-3 text-center">
+                    {% if tx.type == 'topup' and not (tx.remarks and "Reversal" in tx.remarks) %}
+                      <button onclick="reverseTopup({{ tx.transaction_id }})" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[11px] font-bold transition">
+                        Undo Top-Up
+                      </button>
+                    {% else %}
+                      <span class="text-slate-400 text-[11px]">---</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="9" class="px-4 py-8 text-center text-slate-400">No transactions recorded.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========================================================================= -->
+      <!-- LEVEL 04-B SECTION: UNREGISTERED TRANSACTIONS (#unregisteredSection)     -->
+      <!-- ========================================================================= -->
+      <div id="unregisteredSection" class="admin-section hidden space-y-4">
+        <div class="bg-white rounded-2xl ring-1 ring-purple-100 shadow-md p-5 sm:p-6">
+          <div class="border-b border-slate-100 pb-3">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-purple-700">04 • Direct POS Counter Logs</span>
+            <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+              <span>👥</span> Walk-In & Unregistered Sales
+            </h3>
+            <p class="text-xs text-slate-500">All non-registered transactions logged by school staff</p>
+          </div>
+
+          <div class="overflow-x-auto rounded-xl border border-slate-100 mt-4">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-purple-50 text-purple-900 font-bold">
+                <tr>
+                  <th class="px-4 py-3">Txn ID</th>
+                  <th class="px-4 py-3">Customer Reference</th>
+                  <th class="px-4 py-3">Amount</th>
+                  <th class="px-4 py-3">Payment Tender</th>
+                  <th class="px-4 py-3">Status</th>
+                  <th class="px-4 py-3">Recorded At</th>
+                  <th class="px-4 py-3">Cashier Staff</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                {% for u in unregistered_transactions %}
+                <tr class="hover:bg-purple-50/40 transition">
+                  <td class="px-4 py-3 font-mono text-slate-500">#{{ u.transaction_id }}</td>
+                  <td class="px-4 py-3 font-bold text-slate-900">{{ u.customer_name }}</td>
+                  <td class="px-4 py-3 font-extrabold text-slate-900">₱{{ '%.2f'|format(u.amount|float) }}</td>
+                  <td class="px-4 py-3 text-slate-600 capitalize">{{ u.payment_mode or 'Cash' }}</td>
+                  <td class="px-4 py-3">
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
+                      {{ u.status }}
+                    </span>
+                  </td>
+                  <td class="px-4 py-3 text-slate-500">{{ u.created_at }}</td>
+                  <td class="px-4 py-3 text-slate-600">{{ u.staff_name }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="7" class="px-4 py-8 text-center text-slate-400">No unregistered sales logged.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- ================= MODAL: Proof / Receipt Viewer ================= -->
+  <div id="proofModal" class="fixed inset-0 z-50 hidden modal-backdrop flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-lg relative text-center">
+      <button onclick="closeModal('proofModal')" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-2xl font-bold">&times;</button>
+      <h3 class="text-base font-bold text-slate-900 mb-2">GCash Top-Up Proof Screenshot</h3>
+      <div class="bg-slate-100 rounded-2xl overflow-hidden max-h-[70vh] flex items-center justify-center border border-slate-200">
+        <img id="proofImageElement" src="" alt="Proof Screenshot" class="w-full h-auto object-contain">
+      </div>
+      <button onclick="closeModal('proofModal')" class="mt-4 px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl transition">
+        Close Preview
+      </button>
     </div>
   </div>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-// Section toggling
-function showSection(id) {
-  document.querySelectorAll('.section').forEach(sec => sec.classList.add('hidden'));
-  document.getElementById(id).classList.remove('hidden');
-}
 
-// Student selection for manual top-up
-function selectStudent(id, name, balance) {
-  document.getElementById('studentId').innerText = id;
-  document.getElementById('studentName').innerText = name;
-  document.getElementById('currentBalance').innerText = balance;
-  document.getElementById('newBalance').innerText = balance;
-}
-
-function confirmTopup() {
-  const studentId = document.getElementById('studentId').innerText;
-  const studentName = document.getElementById('studentName').innerText;
-  const amount = parseFloat(document.getElementById('topupAmount').value) || 0;
-
-  fetch('/manual_topup', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ student_id: studentId, amount: amount })
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (data.success) {
-      if (data.new_balance !== undefined) {
-        document.getElementById('newBalance').innerText = parseFloat(data.new_balance).toFixed(2);
+  <!-- ================= JAVASCRIPT LOGIC ================= -->
+  <script>
+    // --- Mobile Sidebar Drawer Toggle ---
+    function toggleMobileSidebar(show) {
+      const sidebar = document.getElementById("adminSidebar");
+      const backdrop = document.getElementById("sidebarBackdrop");
+      if (!sidebar || !backdrop) return;
+      if (show) {
+        sidebar.classList.remove("-translate-x-full");
+        backdrop.classList.remove("hidden");
+      } else {
+        sidebar.classList.add("-translate-x-full");
+        backdrop.classList.add("hidden");
       }
-      showToast("Manual top-up successful ✔", "success");
-    } else {
-      showToast(data.message || "Manual top-up failed ❌", "error");
     }
-  })
-  .catch(err => {
-    console.error("Manual top-up error:", err);
-    showToast("Unexpected error occurred ❌", "error");
-  });
-}
 
-function updateBalance() {
-  const current = parseFloat(document.getElementById('currentBalance').innerText) || 0;
-  const amount = parseFloat(document.getElementById('topupAmount').value) || 0;
-  document.getElementById('newBalance').innerText = (current + amount).toFixed(2);
-}
+    // --- Hierarchical Side Navigation Switcher ---
+    function switchNavSection(sectionId, btn) {
+      if (sectionId === "summarySection") {
+        sectionId = "chartsSection";
+        const topupBlock = document.getElementById("manualTopupSection");
+        if (topupBlock) {
+          setTimeout(() => topupBlock.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+        }
+      }
+      document.querySelectorAll(".admin-section").forEach(s => s.classList.add("hidden"));
+      const target = document.getElementById(sectionId);
+      if (target) target.classList.remove("hidden");
 
-// ✅ Modern Toast Notifications
-function showToast(message, type="success") {
-  const toast = document.createElement("div");
-  toast.className = `fixed bottom-4 right-4 flex items-center space-x-2 px-4 py-2 rounded shadow-lg text-white z-50 transform transition-all duration-300
-    ${type === "success" ? "bg-green-600" : type === "error" ? "bg-red-600" : "bg-blue-600"}`;
-  toast.innerHTML = `
-    <span>${type === "success" ? "✅" : type === "error" ? "❌" : "ℹ️"}</span>
-    <span>${message}</span>
-  `;
-  document.body.appendChild(toast);
-  setTimeout(() => {
-    toast.style.opacity = "0";
-    toast.style.transform = "translateX(100%)";
-    setTimeout(() => toast.remove(), 500);
-  }, 3000);
-}
+      const matchedBtn = btn || document.querySelector(`.nav-tab[data-target="${sectionId}"]`);
+      if (matchedBtn) {
+        document.querySelectorAll(".nav-tab").forEach(tab => {
+          tab.classList.remove("active");
+          tab.classList.add("text-slate-700");
+        });
+        matchedBtn.classList.add("active");
+        matchedBtn.classList.remove("text-slate-700");
 
-// Approve, Reject, Reverse Top-Up functions remain unchanged
-function approveTopup(id) { /* same logic, with showToast */ }
-function rejectTopup(id) { /* same logic, with showToast */ }
-function reverseTopup(id) { /* same logic, with showToast */ }
+        // Update Top Header Breadcrumb & Title
+        const catEl = document.getElementById("headerBreadcrumbCategory");
+        const titleEl = document.getElementById("headerSectionTitle");
+        if (catEl && matchedBtn.dataset.category) catEl.textContent = matchedBtn.dataset.category;
+        if (titleEl && matchedBtn.dataset.title) titleEl.textContent = matchedBtn.dataset.title;
+      }
 
-// Date filters
-document.addEventListener("DOMContentLoaded", function() {
-  function addDateFilter(inputId, tableId, colIndex) {
-    const input = document.getElementById(inputId);
-    if (!input) return;
-    input.addEventListener("change", function() {
-      const filterDate = this.value;
-      const rows = document.querySelectorAll(`#${tableId} tr`);
-      rows.forEach((row,i) => {
-        if (i===0) return;
-        const cell = row.cells[colIndex];
+      // Close mobile drawer when a section is selected
+      toggleMobileSidebar(false);
+
+      if (sectionId === "chartsSection" && !window.chartsRendered) {
+        initCharts();
+      }
+    }
+
+    function expandManualWorkstation() {
+      const body = document.getElementById("manualTopupWorkstationBody");
+      const icon = document.getElementById("manualWorkstationToggleIcon");
+      const text = document.getElementById("manualWorkstationToggleText");
+      if (body && body.classList.contains("hidden")) {
+        body.classList.remove("hidden");
+        if (icon) icon.textContent = "➖";
+        if (text) text.textContent = "Minimize Counter Workstation";
+      }
+    }
+
+    function toggleManualWorkstation() {
+      const body = document.getElementById("manualTopupWorkstationBody");
+      const icon = document.getElementById("manualWorkstationToggleIcon");
+      const text = document.getElementById("manualWorkstationToggleText");
+      if (!body) return;
+      const isHidden = body.classList.toggle("hidden");
+      if (icon) icon.textContent = isHidden ? "➕" : "➖";
+      if (text) text.textContent = isHidden ? "Open Counter Workstation" : "Minimize Counter Workstation";
+      if (!isHidden) {
+        const topupBlock = document.getElementById("manualTopupSection");
+        if (topupBlock) topupBlock.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+
+    function triggerLeftSidebarJump() {
+      // Open sidebar if on mobile/tablet screen
+      toggleMobileSidebar(true);
+      const sidebar = document.getElementById("adminSidebar");
+      const navButtons = document.querySelectorAll("#adminSidebar .nav-tab");
+      if (sidebar) {
+        sidebar.classList.add("ring-4", "ring-purple-400");
+        setTimeout(() => sidebar.classList.remove("ring-4", "ring-purple-400"), 1800);
+      }
+      navButtons.forEach((btn, idx) => {
+        setTimeout(() => {
+          btn.classList.add("ring-2", "ring-purple-500", "scale-[1.02]");
+          setTimeout(() => btn.classList.remove("ring-2", "ring-purple-500", "scale-[1.02]"), 1200);
+        }, idx * 120);
+      });
+      // Also jump to the next primary operational button on the left sidebar (Pending Top-Ups)
+      const pendingBtn = document.querySelector('#adminSidebar .nav-tab[data-target="topupsSection"]');
+      if (pendingBtn) {
+        pendingBtn.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+      showToast("👈 Left Sidebar buttons highlighted! Click any section on the left panel.", "info");
+    }
+
+    function jumpToLeftSidebarButton(targetSectionId) {
+      toggleMobileSidebar(true);
+      const targetBtn = document.querySelector(`#adminSidebar .nav-tab[data-target="${targetSectionId}"]`);
+      if (targetBtn) {
+        targetBtn.scrollIntoView({ behavior: "smooth", block: "center" });
+        targetBtn.classList.add("ring-4", "ring-purple-400");
+        setTimeout(() => targetBtn.classList.remove("ring-4", "ring-purple-400"), 1600);
+        switchNavSection(targetSectionId, targetBtn);
+      } else {
+        switchNavSection(targetSectionId);
+      }
+    }
+
+    function focusManualTopup() {
+      switchNavSection("chartsSection");
+      expandManualWorkstation();
+      const topupBlock = document.getElementById("manualTopupSection");
+      if (topupBlock) {
+        topupBlock.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      const input = document.getElementById("studentSearchInput");
+      if (input) setTimeout(() => input.focus(), 250);
+    }
+
+    function quickTopupStudent(schoolId, fullName, balance) {
+      switchNavSection("chartsSection");
+      expandManualWorkstation();
+      selectStudent(schoolId, fullName, balance);
+      const topupBlock = document.getElementById("manualTopupSection");
+      if (topupBlock) {
+        topupBlock.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      const input = document.getElementById("topupAmount");
+      if (input) setTimeout(() => input.focus(), 150);
+    }
+
+    // --- Toast Notifications ---
+    function showToast(message, type = "success") {
+      const toast = document.createElement("div");
+      toast.className = `fixed bottom-5 right-5 flex items-center gap-2 px-4 py-3 rounded-2xl shadow-xl text-white text-xs font-semibold z-50 transition-all duration-300 transform translate-y-2 ${type === "success" ? "bg-emerald-600" : type === "error" ? "bg-rose-600" : "bg-purple-600"}`;
+      const iconSvg = type === "success" 
+        ? `<svg class="w-4 h-4 text-emerald-200" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>`
+        : type === "error"
+        ? `<svg class="w-4 h-4 text-rose-200" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>`
+        : `<svg class="w-4 h-4 text-purple-200" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`;
+      toast.innerHTML = `
+        <span class="shrink-0">${iconSvg}</span>
+        <span>${message}</span>
+      `;
+      document.body.appendChild(toast);
+      requestAnimationFrame(() => toast.classList.remove("translate-y-2"));
+      setTimeout(() => {
+        toast.style.opacity = "0";
+        setTimeout(() => toast.remove(), 400);
+      }, 3500);
+    }
+
+    // =========================================================================
+    // ADMIN DASHBOARD QR SCANNER WORKSTATION & HARDWARE BARCODE GUN HANDLER
+    // =========================================================================
+    let adminHtml5Qr = null;
+    let isAdminScannerActive = false;
+    let adminCamList = [];
+    let selectedAdminCamId = null;
+    let isAdminCamFlipped = false;
+    window.adminBeepEnabled = true;
+    let lastAdminScanTime = 0;
+
+    function playAdminScanChime() {
+      if (!window.adminBeepEnabled) return;
+      try {
+        if (navigator.vibrate) navigator.vibrate([60, 30, 80]);
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        // 2-tone melodic chime: C6 (1046.5Hz) -> E6 (1318.5Hz)
+        osc.frequency.setValueAtTime(1046.5, ctx.currentTime);
+        osc.frequency.setValueAtTime(1318.5, ctx.currentTime + 0.08);
+        gain.gain.setValueAtTime(0.18, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.23);
+      } catch (e) {
+        console.warn("Chime error:", e);
+      }
+    }
+
+    function toggleAdminScannerBeep() {
+      window.adminBeepEnabled = !window.adminBeepEnabled;
+      const icon = document.getElementById("adminBeepIcon");
+      const label = document.getElementById("adminBeepLabel");
+      if (icon) icon.textContent = window.adminBeepEnabled ? "🔊" : "🔇";
+      if (label) label.textContent = window.adminBeepEnabled ? "Sound On" : "Muted";
+      showToast(window.adminBeepEnabled ? "Scanner chime enabled" : "Scanner chime muted", "info");
+    }
+
+    let adminZoomLevel = 1.0;
+
+    function applyAdminCamTransform() {
+      const videoEl = document.querySelector("#adminQrReader video");
+      if (videoEl) {
+        const flipStr = isAdminCamFlipped ? "scaleX(-1) " : "";
+        videoEl.style.transform = `${flipStr}scale(${adminZoomLevel})`;
+        videoEl.style.transformOrigin = "center center";
+        videoEl.style.transition = "transform 0.2s ease";
+      }
+    }
+
+    function toggleAdminCamFlip() {
+      isAdminCamFlipped = !isAdminCamFlipped;
+      applyAdminCamTransform();
+      showToast(isAdminCamFlipped ? "Camera flipped horizontally" : "Normal camera view", "info");
+    }
+
+    function setAdminCamZoom(level) {
+      adminZoomLevel = parseFloat(level) || 1.0;
+      applyAdminCamTransform();
+      document.querySelectorAll(".admin-zoom-btn").forEach(btn => {
+        const bZoom = parseFloat(btn.dataset.zoom) || 1.0;
+        if (Math.abs(bZoom - adminZoomLevel) < 0.05) {
+          btn.className = "admin-zoom-btn px-2.5 py-1 rounded-lg text-xs font-black bg-emerald-600 text-white shadow-xs transition cursor-pointer";
+        } else {
+          btn.className = "admin-zoom-btn px-2.5 py-1 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition cursor-pointer";
+        }
+      });
+      showToast(`Desktop Zoom: ${adminZoomLevel}x (Hold card 40–50 cm away for sharp focus)`, "info");
+    }
+
+    let adminNativeDetectorTimer = null;
+    let isHandlingAdminScan = false;
+
+    function stopAdminNativeDetector() {
+      if (adminNativeDetectorTimer) {
+        clearInterval(adminNativeDetectorTimer);
+        adminNativeDetectorTimer = null;
+      }
+    }
+
+    function attachAdminMultiPassDetector() {
+      stopAdminNativeDetector();
+      let detector = null;
+      try {
+        if ('BarcodeDetector' in window) {
+          detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+        }
+      } catch (e) {
+        console.warn('BarcodeDetector API unavailable:', e);
+      }
+
+      const offCanvas = document.createElement('canvas');
+      const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
+      let tick = 0;
+
+      adminNativeDetectorTimer = setInterval(async () => {
+        const videoEl = document.querySelector('#adminQrReader video');
+        if (!videoEl || videoEl.readyState < 2 || !videoEl.videoWidth || !videoEl.videoHeight) return;
+        tick++;
+
+        // Update resolution badge if available
+        const resBadge = document.getElementById('adminCamResolutionBadge');
+        if (resBadge && tick === 5) {
+          resBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span><span>${videoEl.videoWidth}x${videoEl.videoHeight}</span>`;
+        }
+
+        const triggerSuccess = (val) => {
+          if (!isHandlingAdminScan && val) {
+            isHandlingAdminScan = true;
+            stopAdminNativeDetector();
+            onAdminQrScanSuccess(val);
+            setTimeout(() => {
+              isHandlingAdminScan = false;
+              if (isAdminScannerActive) attachAdminMultiPassDetector();
+            }, 1800);
+          }
+        };
+
+        // Engine 1: Native Hardware BarcodeDetector API (C++ level, runs in <10ms)
+        if (detector) {
+          try {
+            const barcodes = await detector.detect(videoEl);
+            if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+              triggerSuccess(barcodes[0].rawValue.trim());
+              return;
+            }
+          } catch (e) {}
+        }
+
+        // Engine 2: Dual-Orientation + Contrast Enhanced jsQR Multi-Pass
+        if (offCtx) {
+          try {
+            const vw = videoEl.videoWidth;
+            const vh = videoEl.videoHeight;
+            const zoomFactor = Math.max(adminZoomLevel, (tick % 3 === 2) ? 1.8 : 1.0);
+            let sw = Math.round(vw / zoomFactor);
+            let sh = Math.round(vh / zoomFactor);
+            let sx = Math.round((vw - sw) / 2);
+            let sy = Math.round((vh - sh) / 2);
+
+            const scale = Math.min(1, 960 / Math.max(sw, sh));
+            const cw = Math.max(200, Math.round(sw * scale));
+            const ch = Math.max(150, Math.round(sh * scale));
+            if (offCanvas.width !== cw || offCanvas.height !== ch) {
+              offCanvas.width = cw;
+              offCanvas.height = ch;
+            }
+
+            const useContrast = (tick % 2 === 0);
+
+            // Pass A: Normal orientation with optional contrast boost
+            offCtx.save();
+            if (useContrast) offCtx.filter = 'contrast(1.5) grayscale(1)';
+            offCtx.drawImage(videoEl, sx, sy, sw, sh, 0, 0, cw, ch);
+            offCtx.restore();
+
+            if (typeof jsQR === 'function') {
+              const imgA = offCtx.getImageData(0, 0, cw, ch);
+              const codeA = jsQR(imgA.data, cw, ch, { inversionAttempts: 'attemptBoth' });
+              if (codeA && codeA.data && codeA.data.trim()) {
+                triggerSuccess(codeA.data.trim());
+                return;
+              }
+            }
+
+            // Pass B: Horizontally Inverted/Mirrored (Crucial for Front Cameras & Webcams)
+            offCtx.save();
+            if (useContrast) offCtx.filter = 'contrast(1.5) grayscale(1)';
+            offCtx.translate(cw, 0);
+            offCtx.scale(-1, 1);
+            offCtx.drawImage(videoEl, sx, sy, sw, sh, 0, 0, cw, ch);
+            offCtx.restore();
+
+            if (detector) {
+              try {
+                const flippedBarcodes = await detector.detect(offCanvas);
+                if (flippedBarcodes && flippedBarcodes.length > 0 && flippedBarcodes[0].rawValue) {
+                  triggerSuccess(flippedBarcodes[0].rawValue.trim());
+                  return;
+                }
+              } catch (e) {}
+            }
+
+            if (typeof jsQR === 'function') {
+              const imgB = offCtx.getImageData(0, 0, cw, ch);
+              const codeB = jsQR(imgB.data, cw, ch, { inversionAttempts: 'attemptBoth' });
+              if (codeB && codeB.data && codeB.data.trim()) {
+                triggerSuccess(codeB.data.trim());
+                return;
+              }
+            }
+          } catch (e) {}
+        }
+      }, 85);
+    }
+
+    async function toggleAdminScanner() {
+      const panel = document.getElementById("adminScannerPanel");
+      if (!panel) return;
+      if (isAdminScannerActive) {
+        await stopAdminScanner();
+      } else {
+        await startAdminScanner();
+      }
+    }
+
+    async function startAdminScanner() {
+      const panel = document.getElementById("adminScannerPanel");
+      const btnText = document.getElementById("adminScannerBtnText");
+      const statusEl = document.getElementById("adminScannerStatus");
+      const loadingNotice = document.getElementById("adminScannerLoadingNotice");
+      const camSelect = document.getElementById("adminCamSelect");
+
+      if (panel) {
+        panel.classList.remove("hidden");
+        panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+      if (btnText) btnText.textContent = "✕ Close Scanner";
+      if (loadingNotice) loadingNotice.classList.remove("hidden");
+
+      if (typeof Html5Qrcode === "undefined") {
+        if (statusEl) statusEl.textContent = "Loading scanner module...";
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      if (!adminHtml5Qr) {
+        adminHtml5Qr = new Html5Qrcode("adminQrReader");
+      }
+
+      const scanConfig = {
+        fps: 22,
+        qrbox: function(w, h) {
+          const bw = Math.max(180, Math.min(w - 16, Math.floor(w * 0.90)));
+          const bh = Math.max(180, Math.min(h - 16, Math.floor(h * 0.88)));
+          return { width: bw, height: bh };
+        },
+        disableFlip: false,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true
+        }
+      };
+
+      const startWithTarget = async (camTarget) => {
+        await adminHtml5Qr.start(
+          camTarget,
+          scanConfig,
+          (decoded) => {
+            if (isHandlingAdminScan) return;
+            isHandlingAdminScan = true;
+            stopAdminNativeDetector();
+            onAdminQrScanSuccess(decoded);
+            setTimeout(() => {
+              isHandlingAdminScan = false;
+              if (isAdminScannerActive) attachAdminMultiPassDetector();
+            }, 1800);
+          },
+          () => { /* ignore frame decode misses */ }
+        );
+        attachAdminMultiPassDetector();
+      };
+
+      try {
+        // Enumerate devices
+        try {
+          adminCamList = await Html5Qrcode.getCameras();
+          if (camSelect && adminCamList && adminCamList.length > 0) {
+            camSelect.innerHTML = adminCamList.map(c => `<option value="${c.id}">${c.label || 'Camera ' + c.id}</option>`).join('');
+            if (!selectedAdminCamId) {
+              // Prefer back/rear camera if available
+              for (const c of adminCamList) {
+                const lbl = (c.label || '').toLowerCase();
+                if (lbl.includes('back') || lbl.includes('rear') || lbl.includes('environment')) {
+                  selectedAdminCamId = c.id;
+                  break;
+                }
+              }
+              if (!selectedAdminCamId) selectedAdminCamId = adminCamList[0].id;
+            }
+            camSelect.value = selectedAdminCamId;
+          }
+        } catch (camErr) {
+          console.warn("Could not list cameras:", camErr);
+        }
+
+        // Try selected camera first
+        if (selectedAdminCamId) {
+          try {
+            await startWithTarget(selectedAdminCamId);
+            onScannerStarted();
+            return;
+          } catch (e1) {
+            console.warn("Direct deviceId start failed, trying constraints...", e1);
+          }
+        }
+
+        // Fallback 1: environment camera
+        try {
+          await startWithTarget({ facingMode: "environment" });
+          onScannerStarted();
+          return;
+        } catch (e2) {}
+
+        // Fallback 2: user webcam
+        try {
+          await startWithTarget({ facingMode: "user" });
+          onScannerStarted();
+          return;
+        } catch (e3) {}
+
+        // Fallback 3: generic video
+        await startWithTarget({ video: true });
+        onScannerStarted();
+
+      } catch (err) {
+        console.error("Camera start failed:", err);
+        if (loadingNotice) loadingNotice.classList.add("hidden");
+        if (statusEl) {
+          statusEl.innerHTML = `<span class="text-rose-400 font-bold">Camera access error (${err.name || err.message}).</span> Please allow camera permissions or use the "Upload / Photo" button!`;
+        }
+        showToast("Camera access error. You can still upload a QR photo or use a barcode gun.", "error");
+      }
+
+      function onScannerStarted() {
+        isAdminScannerActive = true;
+        if (loadingNotice) loadingNotice.classList.add("hidden");
+        if (statusEl) statusEl.innerHTML = `<span class="text-emerald-400 font-bold">⚡ Active • Point camera at Student QR ID</span>`;
+        applyAdminCamTransform();
+      }
+    }
+
+    async function switchAdminCamera(camId) {
+      if (!camId) return;
+      selectedAdminCamId = camId;
+      if (isAdminScannerActive && adminHtml5Qr) {
+        try {
+          stopAdminNativeDetector();
+          await adminHtml5Qr.stop();
+          isAdminScannerActive = false;
+          await startAdminScanner();
+        } catch (e) {
+          console.warn("Switch camera error:", e);
+        }
+      }
+    }
+
+    async function stopAdminScanner() {
+      const panel = document.getElementById("adminScannerPanel");
+      const btnText = document.getElementById("adminScannerBtnText");
+      const loadingNotice = document.getElementById("adminScannerLoadingNotice");
+      const statusEl = document.getElementById("adminScannerStatus");
+
+      stopAdminNativeDetector();
+      if (adminHtml5Qr && isAdminScannerActive) {
+        try {
+          await adminHtml5Qr.stop();
+        } catch (e) {
+          console.warn("Error stopping scanner:", e);
+        }
+      }
+      isAdminScannerActive = false;
+      if (panel) panel.classList.add("hidden");
+      if (btnText) btnText.textContent = "📷 Scan Student QR";
+      if (loadingNotice) loadingNotice.classList.add("hidden");
+      if (statusEl) statusEl.textContent = "Scanner idle";
+    }
+
+    // --- Image File & Photo Snapshot Multi-Pass Decoder ---
+    async function decodeAdminQrFromImageFile(file) {
+      const loadImg = (f) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = reject;
+          img.src = ev.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(f);
+      });
+
+      const img = await loadImg(file);
+
+      // Multi-Pass jsQR Canvas Decoder with contrast & orientation sweeps
+      if (typeof jsQR === "function") {
+        const jsQrConfigs = [
+          { maxDim: 1000, pad: 36, filter: "none", flip: false, cropCenter: false },
+          { maxDim: 1500, pad: 40, filter: "none", flip: false, cropCenter: false },
+          { maxDim: 900,  pad: 36, filter: "contrast(1.6) grayscale(1)", flip: false, cropCenter: false },
+          { maxDim: 700,  pad: 36, filter: "contrast(2.2) brightness(1.08) grayscale(1)", flip: false, cropCenter: false },
+          { maxDim: 500,  pad: 28, filter: "none", flip: false, cropCenter: false },
+          { maxDim: 900,  pad: 36, filter: "none", flip: false, cropCenter: true },
+          { maxDim: 900,  pad: 36, filter: "contrast(1.6) grayscale(1)", flip: false, cropCenter: true },
+          { maxDim: 900,  pad: 36, filter: "none", flip: true, cropCenter: false }
+        ];
+
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+        for (const cfg of jsQrConfigs) {
+          try {
+            let sx = 0, sy = 0, sw = img.width, sh = img.height;
+            if (cfg.cropCenter) {
+              sw = Math.round(img.width * 0.65);
+              sh = Math.round(img.height * 0.65);
+              sx = Math.round((img.width - sw) / 2);
+              sy = Math.round((img.height - sh) / 2);
+            }
+            const scale = Math.min(1, cfg.maxDim / Math.max(sw, sh));
+            const dw = Math.max(160, Math.round(sw * scale));
+            const dh = Math.max(160, Math.round(sh * scale));
+            const cw = dw + cfg.pad * 2;
+            const ch = dh + cfg.pad * 2;
+
+            canvas.width = cw;
+            canvas.height = ch;
+            ctx.save();
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fillRect(0, 0, cw, ch);
+            if (cfg.filter !== "none") ctx.filter = cfg.filter;
+            if (cfg.flip) {
+              ctx.translate(cw, 0);
+              ctx.scale(-1, 1);
+            }
+            ctx.drawImage(img, sx, sy, sw, sh, cfg.pad, cfg.pad, dw, dh);
+            ctx.restore();
+
+            const imgData = ctx.getImageData(0, 0, cw, ch);
+            const code = jsQR(imgData.data, cw, ch, { inversionAttempts: "attemptBoth" });
+            if (code && code.data && code.data.trim()) {
+              return code.data.trim();
+            }
+          } catch (e) {}
+        }
+      }
+
+      // Fallback: Html5Qrcode file scan
+      if (!window.adminFileQrScanner) {
+        const dummyDiv = document.createElement("div");
+        dummyDiv.id = "admin-qr-file-dummy";
+        dummyDiv.style.display = "none";
+        document.body.appendChild(dummyDiv);
+        window.adminFileQrScanner = new Html5Qrcode("admin-qr-file-dummy");
+      }
+
+      try {
+        return await window.adminFileQrScanner.scanFile(file, false);
+      } catch (e) {}
+
+      throw new Error("No readable QR found in image");
+    }
+
+    async function scanAdminQrFromFile(input) {
+      if (!input.files || !input.files[0]) return;
+      const file = input.files[0];
+      const statusEl = document.getElementById("adminScannerStatus");
+      if (statusEl) statusEl.innerHTML = `<span class="text-purple-300 font-bold">🔍 Processing & enhancing QR image...</span>`;
+
+      try {
+        const decodedText = await decodeAdminQrFromImageFile(file);
+        input.value = "";
+        onAdminQrScanSuccess(decodedText);
+      } catch (err) {
+        input.value = "";
+        if (statusEl) {
+          statusEl.innerHTML = `<span class="text-amber-400 font-bold">Could not detect QR in image.</span> Ensure the QR is clear and well lit.`;
+        }
+        showToast("No QR code detected in the selected image.", "error");
+      }
+    }
+
+    function onAdminQrScanSuccess(decodedText) {
+      const now = Date.now();
+      if (now - lastAdminScanTime < 1500) return;
+      lastAdminScanTime = now;
+      processStudentQrCode(decodedText);
+    }
+
+    async function processStudentQrCode(rawQr) {
+      const qrData = (rawQr || "").trim();
+      if (!qrData) return false;
+
+      // Handle dynamic QR format "<student_id>-<timestamp>" or direct school_id
+      const parsedPart = qrData.includes("-") ? qrData.split("-")[0] : qrData;
+
+      const students = getStudentDirectoryList();
+      let matched = students.find(s => 
+        s.school_id === qrData ||
+        s.school_id.toLowerCase() === qrData.toLowerCase() ||
+        (s.student_id && s.student_id === parsedPart) ||
+        s.school_id === parsedPart
+      );
+
+      if (matched) {
+        executeQrStudentSelection(matched);
+        return true;
+      }
+
+      // If not matched in rendered table, query backend /staff_preview_student_qr
+      try {
+        const resp = await fetch("/staff_preview_student_qr", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ studentQr: qrData })
+        });
+        const data = await resp.json();
+        if (data && data.success) {
+          const apiStudent = {
+            school_id: String(data.school_id || data.student_id),
+            student_id: String(data.student_id),
+            full_name: data.full_name,
+            balance: parseFloat(data.balance || 0)
+          };
+          executeQrStudentSelection(apiStudent);
+          return true;
+        }
+      } catch (netErr) {
+        console.warn("Backend QR check failed:", netErr);
+      }
+
+      showToast(`⚠️ Student QR not recognized (${qrData})`, "error");
+      const statusEl = document.getElementById("adminScannerStatus");
+      if (statusEl) {
+        statusEl.innerHTML = `<span class="text-amber-400 font-bold">⚠️ Scanned "${qrData}" but no matching student found in system.</span>`;
+      }
+      return false;
+    }
+
+    function executeQrStudentSelection(s) {
+      playAdminScanChime();
+
+      // Update Scanner Preview Card
+      const nameEl = document.getElementById("adminScanPreviewName");
+      const idEl = document.getElementById("adminScanPreviewId");
+      const balEl = document.getElementById("adminScanPreviewBal");
+      const timeEl = document.getElementById("adminLastScannedTime");
+
+      if (nameEl) nameEl.textContent = s.full_name;
+      if (idEl) idEl.textContent = `School ID: ${s.school_id}`;
+      if (balEl) balEl.textContent = `₱${s.balance.toFixed(2)}`;
+      if (timeEl) {
+        const d = new Date();
+        timeEl.textContent = `Scanned at ${d.toLocaleTimeString()}`;
+      }
+
+      // Pre-fill topup form
+      selectStudent(s.school_id, s.full_name, s.balance);
+
+      // Focus Top-Up Amount input immediately for frictionless entry!
+      const amtInput = document.getElementById("topupAmount");
+      if (amtInput) {
+        setTimeout(() => {
+          amtInput.focus();
+          amtInput.select();
+        }, 120);
+      }
+
+      // Highlight status in scanner
+      const statusEl = document.getElementById("adminScannerStatus");
+      if (statusEl) {
+        statusEl.innerHTML = `<span class="text-emerald-400 font-black">✓ Successfully identified ${s.full_name} (${s.school_id})!</span>`;
+      }
+
+      showToast(`🎯 Identified: ${s.full_name} (Balance: ₱${s.balance.toFixed(2)})`, "success");
+    }
+
+    // =========================================================================
+    // HARDWARE USB SCANNER GUN LISTENER (Rapid Keystroke Detection)
+    // =========================================================================
+    let usbGunBuffer = "";
+    let lastKeypressTime = 0;
+
+    window.addEventListener("keydown", function(e) {
+      const now = Date.now();
+      const timeDiff = now - lastKeypressTime;
+
+      // Enter/Tab indicates barcode scanner transmission complete
+      if (e.key === "Enter" || e.key === "Tab") {
+        if (usbGunBuffer.length >= 2 && timeDiff < 80) {
+          const barcode = usbGunBuffer.trim();
+          usbGunBuffer = "";
+          if (processStudentQrCode(barcode)) {
+            e.preventDefault();
+            return;
+          }
+        }
+        usbGunBuffer = "";
+        return;
+      }
+
+      if (e.key && e.key.length === 1) {
+        if (timeDiff > 55) {
+          usbGunBuffer = e.key;
+        } else {
+          usbGunBuffer += e.key;
+        }
+        lastKeypressTime = now;
+      }
+    });
+
+    // --- Student Selection for Manual Top-Up ---
+    function setTopupAmount(amt) {
+      const input = document.getElementById('topupAmount');
+      if (input) {
+        input.value = amt;
+        updateBalancePreview();
+        const msgEl = document.getElementById('topupValidationMsg');
+        if (msgEl) msgEl.classList.add('hidden');
+      }
+    }
+
+    function getStudentDirectoryList() {
+      const dropdown = document.getElementById('studentSelectDropdown');
+      if (!dropdown) return [];
+      const list = [];
+      for (let i = 0; i < dropdown.options.length; i++) {
+        const opt = dropdown.options[i];
+        if (!opt.value) continue;
+        list.push({
+          school_id: String(opt.value),
+          student_id: String(opt.getAttribute('data-student-id') || ''),
+          full_name: opt.getAttribute('data-name') || opt.text,
+          balance: parseFloat(opt.getAttribute('data-balance') || 0)
+        });
+      }
+      return list;
+    }
+
+    function handleStudentSearch(val) {
+      const q = (val || "").trim().toLowerCase();
+      const resultsEl = document.getElementById('studentSearchResults');
+      const clearBtn = document.getElementById('btnClearStudentSearch');
+      if (!resultsEl) return;
+
+      if (clearBtn) {
+        if (q.length > 0) clearBtn.classList.remove('hidden');
+        else clearBtn.classList.add('hidden');
+      }
+
+      const allStudents = getStudentDirectoryList();
+      const matches = allStudents.filter(s => 
+        s.full_name.toLowerCase().includes(q) || s.school_id.toLowerCase().includes(q)
+      );
+
+      if (matches.length === 0) {
+        resultsEl.innerHTML = `
+          <div class="p-3 text-center text-xs text-slate-400">
+            No matching students found for "<span class="font-bold text-slate-600">${val}</span>"
+          </div>
+        `;
+        resultsEl.classList.remove('hidden');
+        return;
+      }
+
+      let html = "";
+      matches.slice(0, 8).forEach(s => {
+        const safeName = s.full_name.replace(/'/g, "\\'");
+        html += `
+          <div onclick="selectStudentFromSearch('${s.school_id}', '${safeName}', '${s.balance}')" 
+               class="p-2.5 hover:bg-purple-50 transition cursor-pointer flex items-center justify-between group">
+            <div class="flex items-center gap-2.5">
+              <div class="w-7 h-7 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xs shrink-0 group-hover:bg-purple-200">
+                ${s.full_name.charAt(0).toUpperCase()}
+              </div>
+              <div class="text-left">
+                <p class="text-xs font-bold text-slate-900 group-hover:text-purple-900">${s.full_name}</p>
+                <p class="text-[10px] font-mono text-slate-500">ID: ${s.school_id}</p>
+              </div>
+            </div>
+            <div class="text-right">
+              <span class="text-xs font-extrabold text-slate-900">₱${s.balance.toFixed(2)}</span>
+            </div>
+          </div>
+        `;
+      });
+      resultsEl.innerHTML = html;
+      resultsEl.classList.remove('hidden');
+    }
+
+    function selectStudentFromSearch(id, name, balance) {
+      selectStudent(id, name, balance, true);
+      const searchInput = document.getElementById('studentSearchInput');
+      if (searchInput) searchInput.value = name;
+      const clearBtn = document.getElementById('btnClearStudentSearch');
+      if (clearBtn) clearBtn.classList.remove('hidden');
+      const resultsEl = document.getElementById('studentSearchResults');
+      if (resultsEl) resultsEl.classList.add('hidden');
+    }
+
+    function clearStudentSearch() {
+      const searchInput = document.getElementById('studentSearchInput');
+      if (searchInput) {
+        searchInput.value = "";
+        searchInput.focus();
+      }
+      const clearBtn = document.getElementById('btnClearStudentSearch');
+      if (clearBtn) clearBtn.classList.add('hidden');
+      const resultsEl = document.getElementById('studentSearchResults');
+      if (resultsEl) resultsEl.classList.add('hidden');
+    }
+
+    // Hide search results when clicking outside
+    document.addEventListener('click', function(e) {
+      const resultsEl = document.getElementById('studentSearchResults');
+      const searchInput = document.getElementById('studentSearchInput');
+      if (resultsEl && searchInput && !resultsEl.contains(e.target) && e.target !== searchInput) {
+        resultsEl.classList.add('hidden');
+      }
+    });
+
+    function handleStudentDropdownChange(selectEl) {
+      if (!selectEl || !selectEl.value) return;
+      const opt = selectEl.options[selectEl.selectedIndex];
+      const name = opt.getAttribute('data-name') || selectEl.value;
+      const bal = opt.getAttribute('data-balance') || '0';
+      selectStudent(selectEl.value, name, bal, false);
+      const searchInput = document.getElementById('studentSearchInput');
+      if (searchInput) searchInput.value = name;
+      const clearBtn = document.getElementById('btnClearStudentSearch');
+      if (clearBtn) clearBtn.classList.remove('hidden');
+    }
+
+    function selectStudent(id, name, balance, syncDropdown = true) {
+      const studentIdEl = document.getElementById('studentId');
+      const studentIdDisplayEl = document.getElementById('studentIdDisplay');
+      const studentNameEl = document.getElementById('studentName');
+      const currentBalanceEl = document.getElementById('currentBalance');
+      const badgeEl = document.getElementById('targetStudentBadge');
+      const cardEl = document.getElementById('targetStudentCard');
+
+      if (studentIdEl) studentIdEl.innerText = id;
+      if (studentIdDisplayEl) studentIdDisplayEl.innerText = `School ID: ${id}`;
+      if (studentNameEl) studentNameEl.innerText = name;
+      
+      const bal = parseFloat(balance) || 0;
+      if (currentBalanceEl) currentBalanceEl.innerText = bal.toFixed(2);
+      if (badgeEl) badgeEl.classList.remove('hidden');
+      if (cardEl) {
+        cardEl.classList.remove('bg-purple-50/70', 'border-purple-100');
+        cardEl.classList.add('bg-emerald-50/60', 'border-emerald-200');
+      }
+
+      // Sync dropdown selector if triggered by table click or search
+      if (syncDropdown) {
+        const dropdown = document.getElementById('studentSelectDropdown');
+        if (dropdown) dropdown.value = id;
+      }
+
+      // Sync search input
+      const searchInput = document.getElementById('studentSearchInput');
+      if (searchInput && searchInput.value !== name) {
+        searchInput.value = name;
+        const clearBtn = document.getElementById('btnClearStudentSearch');
+        if (clearBtn) clearBtn.classList.remove('hidden');
+      }
+
+      // Highlight matching row in the student directory table
+      document.querySelectorAll('#adminStudentTable tbody tr').forEach(row => {
+        if (row.getAttribute('data-school-id') === String(id)) {
+          row.classList.add('bg-purple-100/70', 'font-semibold');
+        } else {
+          row.classList.remove('bg-purple-100/70', 'font-semibold');
+        }
+      });
+
+      const msgEl = document.getElementById('topupValidationMsg');
+      if (msgEl) msgEl.classList.add('hidden');
+
+      updateBalancePreview();
+      showToast(`Selected: ${name}`, "info");
+    }
+
+    function updateBalancePreview() {
+      const current = parseFloat(document.getElementById('currentBalance')?.innerText) || 0;
+      const amount = parseFloat(document.getElementById('topupAmount')?.value) || 0;
+      const newBalEl = document.getElementById('newBalance');
+      if (newBalEl) {
+        newBalEl.innerText = (current + amount).toFixed(2);
+      }
+    }
+
+    function confirmTopup() {
+      const studentId = document.getElementById('studentId')?.innerText.trim();
+      const studentName = document.getElementById('studentName')?.innerText.trim() || "Student";
+      const amount = parseFloat(document.getElementById('topupAmount')?.value) || 0;
+      const msgEl = document.getElementById('topupValidationMsg');
+      const btn = document.getElementById('btnConfirmTopup');
+      const btnText = document.getElementById('btnConfirmTopupText');
+      const dropdown = document.getElementById('studentSelectDropdown');
+
+      if (!studentId || studentId === "---") {
+        if (msgEl) {
+          msgEl.className = "p-2.5 rounded-xl text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-800 flex items-center gap-2";
+          msgEl.innerHTML = `<span>⚠️</span><span>Please select a student from the dropdown or directory above first!</span>`;
+          msgEl.classList.remove('hidden');
+        }
+        if (dropdown) {
+          dropdown.classList.add('ring-2', 'ring-rose-400', 'border-rose-400');
+          dropdown.focus();
+          setTimeout(() => dropdown.classList.remove('ring-2', 'ring-rose-400', 'border-rose-400'), 3000);
+        }
+        showToast("Please choose a student from the directory first!", "error");
+        return;
+      }
+
+      if (amount <= 0 || isNaN(amount)) {
+        if (msgEl) {
+          msgEl.className = "p-2.5 rounded-xl text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-800 flex items-center gap-2";
+          msgEl.innerHTML = `<span>⚠️</span><span>Please enter a valid deposit amount greater than ₱0.00!</span>`;
+          msgEl.classList.remove('hidden');
+        }
+        document.getElementById('topupAmount')?.focus();
+        showToast("Enter a positive top-up amount!", "error");
+        return;
+      }
+
+      // UI Loading state
+      if (btn) btn.disabled = true;
+      if (btnText) btnText.innerHTML = `<span>Processing deposit...</span>`;
+
+      fetch('/manual_topup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ student_id: studentId, amount: amount })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          const formattedBal = parseFloat(data.new_balance !== undefined ? data.new_balance : 0).toFixed(2);
+          
+          // 1. Update form display
+          const curBalEl = document.getElementById('currentBalance');
+          const newBalEl = document.getElementById('newBalance');
+          if (curBalEl) curBalEl.innerText = formattedBal;
+          if (newBalEl) newBalEl.innerText = formattedBal;
+
+          // 2. Update directory table cell
+          document.querySelectorAll(`tr[data-school-id="${studentId}"] .student-bal-cell`).forEach(cell => {
+            cell.textContent = `₱${formattedBal}`;
+          });
+
+          // 3. Update dropdown option label
+          if (dropdown) {
+            const opt = dropdown.querySelector(`option[value="${studentId}"]`);
+            if (opt) {
+              opt.setAttribute('data-balance', formattedBal);
+              opt.textContent = `${studentName} (School ID: ${studentId}) — Current: ₱${formattedBal}`;
+            }
+          }
+
+          // 4. Reset input & show confirmation
+          document.getElementById('topupAmount').value = "";
+          if (msgEl) {
+            msgEl.className = "p-2.5 rounded-xl text-xs font-semibold bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-2";
+            msgEl.innerHTML = `<span>✅</span><span>Successfully credited ₱${amount.toFixed(2)} to ${studentName}! New balance: ₱${formattedBal}</span>`;
+            msgEl.classList.remove('hidden');
+          }
+
+          showToast(`₱${amount.toFixed(2)} credited to ${studentName}!`, "success");
+          syncAdminData();
+        } else {
+          if (msgEl) {
+            msgEl.className = "p-2.5 rounded-xl text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-800 flex items-center gap-2";
+            msgEl.innerHTML = `<span>❌</span><span>${data.message || "Manual top-up failed"}</span>`;
+            msgEl.classList.remove('hidden');
+          }
+          showToast(data.message || "Manual top-up failed", "error");
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        showToast("Unexpected network error occurred", "error");
+      })
+      .finally(() => {
+        if (btn) btn.disabled = false;
+        if (btnText) btnText.innerHTML = `<span>Confirm & Credit Student</span>`;
+      });
+    }
+
+    // --- Approve & Reject Pending Top-Ups (Instant AJAX with Live Sync) ---
+    function approveTopup(id) {
+      fetch(`/admin/approve_topup/${id}`, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          showToast("Top-up approved & credited! ✔", "success");
+          const row = document.getElementById(`topup-${id}`);
+          if (row) {
+            row.style.opacity = "0";
+            setTimeout(() => {
+              row.remove();
+              syncAdminData();
+            }, 300);
+          } else {
+            syncAdminData();
+          }
+        } else {
+          showToast(data.message || "Approval failed ❌", "error");
+        }
+      })
+      .catch(() => showToast("Error approving top-up", "error"));
+    }
+
+    function rejectTopup(id) {
+      if (!confirm("Are you sure you want to reject this top-up?")) return;
+      fetch(`/admin/reject_topup/${id}`, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          showToast("Top-up rejected ❌", "info");
+          const row = document.getElementById(`topup-${id}`);
+          if (row) {
+            row.style.opacity = "0";
+            setTimeout(() => {
+              row.remove();
+              syncAdminData();
+            }, 300);
+          } else {
+            syncAdminData();
+          }
+        } else {
+          showToast(data.message || "Rejection failed", "error");
+        }
+      })
+      .catch(() => showToast("Error rejecting top-up", "error"));
+    }
+
+    // ==========================================
+    // 🔄 ADMIN LIVE REAL-TIME SYNC ENGINE (Zero-Refresh)
+    // ==========================================
+    let lastAdminPendingCount = {{ pending_topups|length }};
+    let isSyncingAdmin = false;
+
+    function playNotificationChime() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+        osc.frequency.setValueAtTime(880, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.35);
+      } catch(e) {}
+    }
+
+    async function syncAdminData() {
+      if (isSyncingAdmin) return;
+      isSyncingAdmin = true;
+      try {
+        const res = await fetch("/api/admin/live_sync");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.success) return;
+
+        // 1. Update Top KPI Cards
+        const topupsEl = document.getElementById("adminTotalTopupsVal");
+        if (topupsEl) topupsEl.textContent = "₱" + Number(data.total_topups || 0).toFixed(2);
+        const recvEl = document.getElementById("adminTotalReceivedVal");
+        if (recvEl) recvEl.textContent = "₱" + Number(data.total_received || 0).toFixed(2);
+        const salesEl = document.getElementById("adminTotalSalesVal");
+        if (salesEl) salesEl.textContent = "₱" + Number(data.total_sales || 0).toFixed(2);
+
+        // 2. Update Pending Count Card & Sidebar/Header Badges
+        const cardEl = document.getElementById("adminPendingCountCard");
+        if (cardEl) {
+          cardEl.textContent = data.pending_count;
+        }
+
+        const badgeEl = document.getElementById("adminPendingCountBadge");
+        if (badgeEl) {
+          badgeEl.textContent = data.pending_count;
+          if (data.pending_count > 0) {
+            badgeEl.classList.remove("hidden");
+          } else {
+            badgeEl.classList.add("hidden");
+          }
+        }
+
+        const headerBadgeEl = document.getElementById("headerPendingQuickBadge");
+        if (headerBadgeEl) {
+          headerBadgeEl.textContent = data.pending_count;
+        }
+
+        // 3. Detect new incoming top-ups
+        if (data.pending_count > lastAdminPendingCount) {
+          playNotificationChime();
+          const newest = data.pending_topups[0];
+          const name = newest ? newest.full_name : "Student";
+          const amt = newest ? Number(newest.amount).toFixed(2) : "0.00";
+          showToast(`🔔 New Pending Top-Up from ${name} (₱${amt})!`, "info");
+        }
+
+        // 4. Update table rows
+        renderAdminPendingTopupsTable(data.pending_topups);
+
+        // 5. Update live charts & summary strips
+        const sumTopupsEl = document.getElementById("chartSumTopups");
+        if (sumTopupsEl) sumTopupsEl.textContent = "₱" + Number(data.total_topups || 0).toFixed(2);
+        const sumPurchasesEl = document.getElementById("chartSumPurchases");
+        if (sumPurchasesEl) sumPurchasesEl.textContent = "₱" + Number(data.total_sales || 0).toFixed(2);
+
+        if (data.charts) {
+          updateChartsLive(data.charts);
+        }
+        if (data.trending_recommendations) {
+          updateMabentaChartPanel(data.trending_recommendations);
+        }
+
+        lastAdminPendingCount = data.pending_count;
+      } catch (err) {
+        // silent on network hiccup
+      } finally {
+        isSyncingAdmin = false;
+      }
+    }
+
+    function renderAdminPendingTopupsTable(list) {
+      const tbody = document.getElementById("adminPendingTopupsBody");
+      if (!tbody) return;
+
+      if (!list || list.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="8" class="px-4 py-10 text-center text-slate-400">
+              <span class="text-2xl block mb-1">🎉</span>
+              No pending top-ups at this time. All submissions processed!
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      let html = "";
+      for (const t of list) {
+        const proofHtml = t.proof ? `
+          <button onclick="viewProof('/static/uploads/${t.proof}')" class="px-2.5 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 font-bold rounded-lg text-[11px] transition">
+            🖼️ View Proof
+          </button>
+        ` : `<span class="text-slate-400 italic text-[11px]">No image</span>`;
+
+        html += `
+          <tr id="topup-${t.topup_id}" class="hover:bg-purple-50/40 transition">
+            <td class="px-4 py-3 font-mono text-slate-500 font-semibold">#${t.topup_id}</td>
+            <td class="px-4 py-3 font-bold text-purple-900">${t.school_id}</td>
+            <td class="px-4 py-3">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-100 text-sky-800 uppercase">
+                ${t.method}
+              </span>
+            </td>
+            <td class="px-4 py-3 font-extrabold text-slate-900 text-sm">₱${Number(t.amount || 0).toFixed(2)}</td>
+            <td class="px-4 py-3 font-mono text-slate-600">${t.reference_number}</td>
+            <td class="px-4 py-3">${proofHtml}</td>
+            <td class="px-4 py-3 text-slate-500 date-cell">${t.created_at}</td>
+            <td class="px-4 py-3 text-center space-x-1.5 whitespace-nowrap">
+              <button onclick="approveTopup(${t.topup_id})" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm transition active:scale-95 text-[11px]">
+                ✓ Approve
+              </button>
+              <button onclick="rejectTopup(${t.topup_id})" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg shadow-sm transition active:scale-95 text-[11px]">
+                ✕ Reject
+              </button>
+            </td>
+          </tr>
+        `;
+      }
+      tbody.innerHTML = html;
+    }
+
+    // Auto-poll in background every 3.5 seconds
+    setInterval(syncAdminData, 3500);
+
+    // --- Reverse Top-Up ---
+    function reverseTopup(id) {
+      if (!confirm("Reverse this top-up? The amount will be deducted from the student's balance.")) return;
+      fetch(`/reverse_topup/${id}`, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          showToast("Top-up reversed successfully 🔄", "success");
+          const row = document.getElementById(`txn-${id}`);
+          if (row) {
+            const statusCell = row.querySelector('.status-cell');
+            if (statusCell) {
+              statusCell.innerHTML = `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-100 text-rose-700">Reversed</span>`;
+            }
+            const remarksCell = row.querySelector('.remarks-cell');
+            if (remarksCell) remarksCell.textContent = "Reversal of mistaken top-up";
+            row.style.backgroundColor = "#fef3c7";
+            setTimeout(() => row.style.backgroundColor = "", 1500);
+          }
+          syncAdminData();
+        } else {
+          showToast(data.message || "Reversal failed ❌", "error");
+        }
+      })
+      .catch(() => showToast("Error reversing transaction", "error"));
+    }
+
+    // --- Proof Modal Viewer ---
+    function viewProof(imageSrc) {
+      document.getElementById("proofImageElement").src = imageSrc;
+      document.getElementById("proofModal").classList.remove("hidden");
+    }
+
+    function closeModal(modalId) {
+      document.getElementById(modalId).classList.add("hidden");
+    }
+
+    // --- Real-time Table Filters ---
+    function filterDirectoryTable() {
+      const q = (document.getElementById("quickStudentSearch").value || "").toLowerCase();
+      document.querySelectorAll("#adminStudentTable tbody tr").forEach(row => {
+        row.style.display = row.textContent.toLowerCase().includes(q) ? "" : "none";
+      });
+    }
+
+    function filterRegStudents() {
+      const q = (document.getElementById("filterStudentsInput").value || "").toLowerCase();
+      document.querySelectorAll("#regStudentsTable tbody tr").forEach(row => {
+        row.style.display = row.textContent.toLowerCase().includes(q) ? "" : "none";
+      });
+    }
+
+    function filterTxnTable() {
+      const q = (document.getElementById("filterTxnInput").value || "").toLowerCase();
+      document.querySelectorAll("#transactionsTable tbody tr").forEach(row => {
+        row.style.display = row.textContent.toLowerCase().includes(q) ? "" : "none";
+      });
+    }
+
+    function filterTopupsByDate() {
+      const date = document.getElementById("filterTopupsDate").value;
+      document.querySelectorAll("#topupsTable tbody tr").forEach(row => {
+        const cell = row.querySelector(".date-cell");
         if (!cell) return;
         const cellDate = cell.innerText.split(" ")[0];
-        row.style.display = (!filterDate || cellDate===filterDate) ? "" : "none";
+        row.style.display = (!date || cellDate === date) ? "" : "none";
       });
-    });
-  }
-  addDateFilter("filterTopups","topupsTable",6);
-  addDateFilter("filterStudents","regStudentsTable",5);
-  addDateFilter("filterTransactions","transactionsTable",5);
-  addDateFilter("filterUnregistered","unregisteredTable",6);
-});
+    }
 
-// Charts setup
-const txnChart = new Chart(document.getElementById('txnChart'), {
-  type: 'line',
-  data: {
-    labels: {{ txn_dates|tojson }},
-    datasets: [
-      { label: 'Top-Ups', data: {{ txn_topups|tojson }}, borderColor: 'purple', fill: false },
-      { label: 'Purchases', data: {{ txn_purchases|tojson }}, borderColor: 'teal', fill: false }
-    ]
-  }
-});
-const regChart = new Chart(document.getElementById('regChart'), {
-  type: 'bar',
-  data: {
-    labels: {{ reg_dates|tojson }},
-    datasets: [{ label: 'Registrations', data: {{ reg_counts|tojson }}, backgroundColor: 'teal' }]
-  }
-});
-const statusChart = new Chart(document.getElementById('statusChart'), {
-  type: 'doughnut',
-  data: {
-    labels: ['Active','Inactive'],
-    datasets: [{ data: [{{ active_count }}, {{ inactive_count }}], backgroundColor: ['#10B981','#EF4444'] }]
-  }
-});
-const staffChart = new Chart(document.getElementById('staffChart'), {
-  type: 'line',
-  data: {
-    labels: {{ totals_dates|tojson }},
-    datasets: [
-      { label: 'Cash', data: {{ manual_totals|tojson }}, borderColor: 'gray', fill: false },
-      { label: 'E-Wallet', data: {{ cashless_totals|tojson }}, borderColor: 'purple', fill: false },
-      { label: 'GCash', data: {{ other_totals|tojson }}, borderColor: 'blue', fill: false }
-    ]
-  }
-});
-</script>
-</div> <!-- end main content -->
+    // ==========================================
+    // 📈 EXECUTIVE ANALYTICS CHARTS ENGINE
+    // ==========================================
+    window.chartsRendered = false;
+    let txnChartInstance = null;
+    let staffChartInstance = null;
+    let regChartInstance = null;
+    let statusChartInstance = null;
+
+    function formatShortDate(isoStr) {
+      if (!isoStr || typeof isoStr !== "string") return isoStr;
+      const parts = isoStr.split("-");
+      if (parts.length !== 3) return isoStr;
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const mIdx = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      return `${months[mIdx] || parts[1]} ${day}`;
+    }
+
+    function formatCompactPeso(val) {
+      const n = Number(val || 0);
+      if (Math.abs(n) >= 1000000) return "₱" + (n / 1000000).toFixed(1) + "M";
+      if (Math.abs(n) >= 1000) return "₱" + (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + "k";
+      return "₱" + n.toFixed(0);
+    }
+
+    function formatFullPeso(val) {
+      return "₱" + Number(val || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function initCharts() {
+      if (window.chartsRendered) return;
+      const txnCanvas = document.getElementById('txnChart');
+      if (!txnCanvas) return;
+      window.chartsRendered = true;
+
+      Chart.defaults.font.family = "'Inter', ui-sans-serif, system-ui, sans-serif";
+      Chart.defaults.color = "#64748b";
+
+      const commonTooltip = {
+        backgroundColor: "rgba(15, 23, 42, 0.92)",
+        titleColor: "#f8fafc",
+        bodyColor: "#e2e8f0",
+        borderColor: "rgba(148, 163, 184, 0.2)",
+        borderWidth: 1,
+        padding: 12,
+        cornerRadius: 12,
+        titleFont: { size: 12, weight: "700" },
+        bodyFont: { size: 12, weight: "600" },
+        boxPadding: 5,
+        usePointStyle: true
+      };
+
+      // 1.1 Top-Ups vs Purchases Trends (Dual Y-Axis so Purchases are never squished by large Top-Ups)
+      const txnCtx = txnCanvas.getContext("2d");
+      const purpleGrad = txnCtx.createLinearGradient(0, 0, 0, 240);
+      purpleGrad.addColorStop(0, "rgba(147, 51, 234, 0.28)");
+      purpleGrad.addColorStop(1, "rgba(147, 51, 234, 0.01)");
+
+      const pinkGrad = txnCtx.createLinearGradient(0, 0, 0, 240);
+      pinkGrad.addColorStop(0, "rgba(219, 39, 119, 0.26)");
+      pinkGrad.addColorStop(1, "rgba(219, 39, 119, 0.01)");
+
+      const rawTxnDates = {{ txn_dates|tojson }};
+      txnChartInstance = new Chart(txnCanvas, {
+        type: 'line',
+        data: {
+          labels: rawTxnDates.map(formatShortDate),
+          datasets: [
+            {
+              label: 'Wallet Top-Ups (₱)',
+              data: {{ txn_topups|tojson }},
+              yAxisID: 'y',
+              borderColor: '#9333ea',
+              backgroundColor: purpleGrad,
+              borderWidth: 3,
+              pointBackgroundColor: '#ffffff',
+              pointBorderColor: '#9333ea',
+              pointBorderWidth: 2.5,
+              pointRadius: 4.5,
+              pointHoverRadius: 7,
+              tension: 0.38,
+              fill: true
+            },
+            {
+              label: 'POS Purchases (₱)',
+              data: {{ txn_purchases|tojson }},
+              yAxisID: 'y1',
+              borderColor: '#db2777',
+              backgroundColor: pinkGrad,
+              borderWidth: 3,
+              pointBackgroundColor: '#ffffff',
+              pointBorderColor: '#db2777',
+              pointBorderWidth: 2.5,
+              pointRadius: 4.5,
+              pointHoverRadius: 7,
+              tension: 0.38,
+              fill: true
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: {
+              position: 'top',
+              align: 'end',
+              labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, font: { size: 11, weight: '600' } }
+            },
+            tooltip: {
+              ...commonTooltip,
+              callbacks: {
+                label: (ctx) => ` ${ctx.dataset.label.replace(' (₱)', '')}: ${formatFullPeso(ctx.parsed.y)}`
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { font: { size: 11, weight: '600' }, color: '#475569' }
+            },
+            y: {
+              type: 'linear',
+              display: true,
+              position: 'left',
+              beginAtZero: true,
+              grid: { color: 'rgba(226, 232, 240, 0.7)', drawBorder: false },
+              ticks: {
+                font: { size: 10, weight: '600' },
+                color: '#7e22ce',
+                callback: (val) => formatCompactPeso(val)
+              },
+              title: { display: true, text: 'Top-Ups (₱)', color: '#7e22ce', font: { size: 10, weight: '700' } }
+            },
+            y1: {
+              type: 'linear',
+              display: true,
+              position: 'right',
+              beginAtZero: true,
+              grid: { drawOnChartArea: false },
+              ticks: {
+                font: { size: 10, weight: '600' },
+                color: '#be185d',
+                callback: (val) => formatCompactPeso(val)
+              },
+              title: { display: true, text: 'Purchases (₱)', color: '#be185d', font: { size: 10, weight: '700' } }
+            }
+          }
+        }
+      });
+
+      // 1.2 Payment Tenders Breakdown (Accurate Campus Wallet, Cash Tender, and GCash Canteen Sales)
+      const rawTotalsDates = {{ totals_dates|tojson }};
+      staffChartInstance = new Chart(document.getElementById('staffChart'), {
+        type: 'bar',
+        data: {
+          labels: rawTotalsDates.map(formatShortDate),
+          datasets: [
+            {
+              label: 'Campus Wallet',
+              data: {{ cashless_totals|tojson }},
+              backgroundColor: '#8b5cf6',
+              hoverBackgroundColor: '#7c3aed',
+              borderRadius: 6,
+              borderSkipped: false,
+              maxBarThickness: 44
+            },
+            {
+              label: 'Cash Tender',
+              data: {{ manual_totals|tojson }},
+              backgroundColor: '#10b981',
+              hoverBackgroundColor: '#059669',
+              borderRadius: 6,
+              borderSkipped: false,
+              maxBarThickness: 44
+            },
+            {
+              label: 'GCash / E-Wallet',
+              data: {{ other_totals|tojson }},
+              backgroundColor: '#0ea5e9',
+              hoverBackgroundColor: '#0284c7',
+              borderRadius: 6,
+              borderSkipped: false,
+              maxBarThickness: 44
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: {
+              position: 'top',
+              align: 'end',
+              labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, font: { size: 11, weight: '600' } }
+            },
+            tooltip: {
+              ...commonTooltip,
+              callbacks: {
+                label: (ctx) => ` ${ctx.dataset.label}: ${formatFullPeso(ctx.parsed.y)}`,
+                footer: (items) => {
+                  const sum = items.reduce((acc, it) => acc + (it.parsed.y || 0), 0);
+                  return `Day Total Sales: ${formatFullPeso(sum)}`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              stacked: true,
+              grid: { display: false },
+              ticks: { font: { size: 11, weight: '600' }, color: '#475569' }
+            },
+            y: {
+              stacked: true,
+              beginAtZero: true,
+              grid: { color: 'rgba(226, 232, 240, 0.7)', drawBorder: false },
+              ticks: {
+                font: { size: 10, weight: '600' },
+                callback: (val) => formatCompactPeso(val)
+              }
+            }
+          }
+        }
+      });
+
+      // 1.3 Student Registration History (Combo Bar + Cumulative Growth Line)
+      const rawRegDates = {{ reg_dates|tojson }};
+      const rawRegCounts = {{ reg_counts|tojson }};
+      const rawRegCumulative = {{ reg_cumulative|default(reg_counts)|tojson }};
+      regChartInstance = new Chart(document.getElementById('regChart'), {
+        type: 'bar',
+        data: {
+          labels: rawRegDates.map(formatShortDate),
+          datasets: [
+            {
+              type: 'bar',
+              label: 'New Signups',
+              data: rawRegCounts,
+              backgroundColor: 'rgba(168, 85, 247, 0.85)',
+              hoverBackgroundColor: '#9333ea',
+              borderRadius: 8,
+              maxBarThickness: 42,
+              order: 2
+            },
+            {
+              type: 'line',
+              label: 'Total Enrolled',
+              data: rawRegCumulative,
+              borderColor: '#10b981',
+              backgroundColor: 'rgba(16, 185, 129, 0.15)',
+              borderWidth: 2.5,
+              pointBackgroundColor: '#ffffff',
+              pointBorderColor: '#10b981',
+              pointBorderWidth: 2.5,
+              pointRadius: 4.5,
+              tension: 0.3,
+              fill: false,
+              order: 1
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: {
+              position: 'top',
+              align: 'end',
+              labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, font: { size: 11, weight: '600' } }
+            },
+            tooltip: {
+              ...commonTooltip,
+              callbacks: {
+                label: (ctx) => ` ${ctx.dataset.label}: ${ctx.parsed.y} student(s)`
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { font: { size: 11, weight: '600' }, color: '#475569' }
+            },
+            y: {
+              beginAtZero: true,
+              grid: { color: 'rgba(226, 232, 240, 0.7)', drawBorder: false },
+              ticks: {
+                stepSize: 1,
+                precision: 0,
+                font: { size: 10, weight: '600' }
+              }
+            }
+          }
+        }
+      });
+
+      // 1.4 Account Status Distribution (Precision Ring Doughnut)
+      statusChartInstance = new Chart(document.getElementById('statusChart'), {
+        type: 'doughnut',
+        data: {
+          labels: ['Active Students', 'Inactive / Restricted'],
+          datasets: [{
+            data: [{{ active_count }}, {{ inactive_count }}],
+            backgroundColor: ['#10b981', '#f43f5e'],
+            hoverBackgroundColor: ['#059669', '#e11d48'],
+            borderWidth: 3,
+            borderColor: '#ffffff',
+            hoverOffset: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '72%',
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              ...commonTooltip,
+              callbacks: {
+                label: (ctx) => {
+                  const total = ctx.dataset.data.reduce((a, b) => a + b, 0) || 1;
+                  const pct = Math.round((ctx.parsed / total) * 100);
+                  return ` ${ctx.label}: ${ctx.parsed} (${pct}%)`;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // --- Interactive Chart Controls ---
+    function setTxnChartMode(mode, btn) {
+      if (btn) {
+        document.querySelectorAll(".txn-mode-btn").forEach(b => {
+          b.className = "txn-mode-btn px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 transition";
+        });
+        btn.className = "txn-mode-btn px-2.5 py-1 rounded-lg bg-white text-purple-700 shadow-xs transition";
+      }
+      if (!txnChartInstance) return;
+      const showTopups = (mode === 'both' || mode === 'topups');
+      const showPurchases = (mode === 'both' || mode === 'purchases');
+      txnChartInstance.data.datasets[0].hidden = !showTopups;
+      txnChartInstance.data.datasets[1].hidden = !showPurchases;
+      txnChartInstance.options.scales.y.display = showTopups;
+      txnChartInstance.options.scales.y1.display = showPurchases;
+      txnChartInstance.update();
+    }
+
+    function setStaffChartGrouping(isStacked, btn) {
+      if (btn) {
+        document.querySelectorAll(".staff-mode-btn").forEach(b => {
+          b.className = "staff-mode-btn px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 transition";
+        });
+        btn.className = "staff-mode-btn px-2.5 py-1 rounded-lg bg-white text-purple-700 shadow-xs transition";
+      }
+      if (!staffChartInstance) return;
+      staffChartInstance.options.scales.x.stacked = isStacked;
+      staffChartInstance.options.scales.y.stacked = isStacked;
+      staffChartInstance.update();
+    }
+
+    function updateChartsLive(charts) {
+      if (!charts) return;
+
+      if (txnChartInstance && Array.isArray(charts.txn_dates)) {
+        txnChartInstance.data.labels = charts.txn_dates.map(formatShortDate);
+        txnChartInstance.data.datasets[0].data = charts.txn_topups || [];
+        txnChartInstance.data.datasets[1].data = charts.txn_purchases || [];
+        txnChartInstance.update('none');
+      }
+
+      if (staffChartInstance && Array.isArray(charts.totals_dates)) {
+        staffChartInstance.data.labels = charts.totals_dates.map(formatShortDate);
+        staffChartInstance.data.datasets[0].data = charts.cashless_totals || [];
+        staffChartInstance.data.datasets[1].data = charts.manual_totals || [];
+        staffChartInstance.data.datasets[2].data = charts.other_totals || [];
+        staffChartInstance.update('none');
+
+        const sumW = (charts.cashless_totals || []).reduce((a, b) => a + Number(b || 0), 0);
+        const sumC = (charts.manual_totals || []).reduce((a, b) => a + Number(b || 0), 0);
+        const sumG = (charts.other_totals || []).reduce((a, b) => a + Number(b || 0), 0);
+        const wEl = document.getElementById("chartSumWallet");
+        const cEl = document.getElementById("chartSumCash");
+        const gEl = document.getElementById("chartSumGcash");
+        if (wEl) wEl.textContent = "₱" + sumW.toFixed(2);
+        if (cEl) cEl.textContent = "₱" + sumC.toFixed(2);
+        if (gEl) gEl.textContent = "₱" + sumG.toFixed(2);
+      }
+
+      if (statusChartInstance && charts.active_count !== undefined) {
+        statusChartInstance.data.datasets[0].data = [charts.active_count, charts.inactive_count];
+        statusChartInstance.update('none');
+        const actEl = document.getElementById("statusActiveCountLabel");
+        const inactEl = document.getElementById("statusInactiveCountLabel");
+        const totEl = document.getElementById("statusChartTotalCenter");
+        if (actEl) actEl.textContent = charts.active_count;
+        if (inactEl) inactEl.textContent = charts.inactive_count;
+        if (totEl) totEl.textContent = Number(charts.active_count || 0) + Number(charts.inactive_count || 0);
+      }
+    }
+
+    function updateMabentaChartPanel(rec) {
+      if (!rec || !rec.top_seller) return;
+      const winEl = document.getElementById("mabentaWindowLabel");
+      if (winEl && rec.window_label) winEl.textContent = rec.window_label;
+
+      const ts = rec.top_seller;
+      const iconEl = document.getElementById("mabentaTopSellerIcon");
+      const nameEl = document.getElementById("mabentaTopSellerName");
+      const metaEl = document.getElementById("mabentaTopSellerMeta");
+      const stockEl = document.getElementById("mabentaTopSellerStock");
+      if (iconEl) iconEl.textContent = ts.icon || "🍳";
+      if (nameEl) nameEl.textContent = ts.name || "Tapsilog";
+      if (metaEl) {
+        metaEl.textContent = `(${ts.qty || 0} sold)`;
+      }
+      if (stockEl && ts.stock !== null && ts.stock !== undefined) {
+        stockEl.textContent = `Stock: ${ts.stock}`;
+      }
+
+      const listEl = document.getElementById("mabentaTopItemsList");
+      if (listEl && Array.isArray(rec.top_items)) {
+        listEl.innerHTML = rec.top_items.slice(0, 4).map((item, i) => {
+          const widthPct = Math.min((Number(item.share_pct || 10) * 2.5), 100);
+          const barClass = i === 0 ? "bg-amber-500" : "bg-purple-500";
+          const rankClass = i === 0 ? "text-amber-600" : "text-slate-400";
+          return `
+            <div class="p-2 rounded-xl bg-slate-50/80 border border-slate-200/60 flex flex-col gap-1">
+              <div class="flex items-center justify-between gap-1.5 text-xs">
+                <span class="font-bold text-slate-800 truncate">
+                  <span class="text-[10px] font-extrabold ${rankClass} mr-1">#${i + 1}</span>${item.icon || '🍽️'} ${item.name}
+                </span>
+                <span class="font-extrabold text-slate-900 text-[11px] shrink-0">${item.qty || 0} sold</span>
+              </div>
+              <div class="w-full h-1.5 bg-slate-200/70 rounded-full overflow-hidden">
+                <div class="h-full rounded-full ${barClass}" style="width: ${widthPct}%"></div>
+              </div>
+            </div>
+          `;
+        }).join("");
+      }
+
+      const recsEl = document.getElementById("mabentaRecommendationsList");
+      if (recsEl && Array.isArray(rec.recommendations) && rec.recommendations.length > 0) {
+        const firstRec = rec.recommendations[0];
+        recsEl.innerHTML = `
+          <div class="px-3 py-1.5 rounded-lg text-[11px] flex items-center justify-between gap-2 bg-purple-50/60 border border-purple-100 text-slate-700">
+            <span class="truncate"><strong class="text-purple-900">Insight:</strong> ${firstRec.text || ''}</span>
+          </div>
+        `;
+      }
+    }
+
+    // Initialize executive overview charts and desktop helper listeners
+    document.addEventListener("DOMContentLoaded", function() {
+      initCharts();
+
+      // Desktop Clipboard Paste (Ctrl+V) anywhere on screen
+      window.addEventListener("paste", async function(e) {
+        if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0) {
+          for (const f of e.clipboardData.files) {
+            if (f.type.startsWith("image/")) {
+              e.preventDefault();
+              showToast("📋 Pasted image detected! Decoding QR...", "info");
+              try {
+                const decoded = await decodeAdminQrFromImageFile(f);
+                onAdminQrScanSuccess(decoded);
+              } catch (err) {
+                showToast("Could not find readable QR in pasted image", "error");
+              }
+              return;
+            }
+          }
+        }
+      });
+
+      // Desktop Drag & Drop onto scanner panel
+      const scanPanel = document.getElementById("adminScannerPanel");
+      if (scanPanel) {
+        scanPanel.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          scanPanel.classList.add("ring-4", "ring-emerald-400");
+        });
+        scanPanel.addEventListener("dragleave", () => {
+          scanPanel.classList.remove("ring-4", "ring-emerald-400");
+        });
+        scanPanel.addEventListener("drop", async (e) => {
+          e.preventDefault();
+          scanPanel.classList.remove("ring-4", "ring-emerald-400");
+          if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+            showToast("📂 File dropped! Decoding QR...", "info");
+            try {
+              const decoded = await decodeAdminQrFromImageFile(e.dataTransfer.files[0]);
+              onAdminQrScanSuccess(decoded);
+            } catch (err) {
+              showToast("Could not find readable QR in dropped file", "error");
+            }
+          }
+        });
+      }
+
+      // Fast Keyboard Enter on Student Directory Search
+      const quickSearch = document.getElementById("quickStudentSearch");
+      if (quickSearch) {
+        quickSearch.addEventListener("keydown", function(e) {
+          if (e.key === "Enter") {
+            const val = (this.value || "").trim();
+            if (!val) return;
+            const students = getStudentDirectoryList();
+            const exact = students.find(s => s.school_id.toLowerCase() === val.toLowerCase());
+            if (exact) {
+              selectStudent(exact.school_id, exact.full_name, exact.balance);
+              const amtInput = document.getElementById("topupAmount");
+              if (amtInput) {
+                setTimeout(() => { amtInput.focus(); amtInput.select(); }, 100);
+              }
+              showToast(`🎯 Selected: ${exact.full_name} (${exact.school_id})`, "success");
+              e.preventDefault();
+              return;
+            }
+            const visibleRow = document.querySelector("#adminStudentTable tbody tr:not([style*='display: none'])");
+            if (visibleRow) {
+              visibleRow.click();
+              const amtInput = document.getElementById("topupAmount");
+              if (amtInput) {
+                setTimeout(() => { amtInput.focus(); amtInput.select(); }, 100);
+              }
+              e.preventDefault();
+            }
+          }
+        });
+      }
+    });
+  </script>
 </body>
 </html>

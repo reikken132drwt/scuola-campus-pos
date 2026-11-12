@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In • Scuola dei Bambini</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+        body {
+      font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
+    @-webkit-keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    .animated-login-bg {
+      background: linear-gradient(-45deg, #f5f3ff, #fdf2f8, #f0fdf4, #ede9fe);
+      background-size: 400% 400%;
+      -webkit-animation: gradientShift 15s ease infinite;
+      animation: gradientShift 15s ease infinite;
+      will-change: background-position;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center p-4 sm:py-8 relative selection:bg-purple-600 selection:text-white overflow-x-hidden">
+  <!-- Background Mesh Orbs & Architectural Dot Grid (Option A) -->
+  <div class="fixed inset-0 pointer-events-none overflow-hidden -z-10" aria-hidden="true">
+    <div class="absolute inset-0 opacity-40"
+         style="background-image: radial-gradient(rgba(100, 116, 139, 0.35) 1.25px, transparent 1.25px); background-size: 24px 24px;">
+    </div>
+    <div class="absolute -top-40 -left-40 w-96 sm:w-[520px] h-96 sm:h-[520px] rounded-full bg-gradient-to-br from-purple-400 to-indigo-500 opacity-25 blur-3xl transform-gpu"></div>
+    <div class="absolute -bottom-40 -right-40 w-96 sm:w-[520px] h-96 sm:h-[520px] rounded-full bg-gradient-to-tr from-pink-400 to-rose-400 opacity-25 blur-3xl transform-gpu"></div>
+    <div class="absolute top-1/3 -right-24 w-80 h-80 rounded-full bg-indigo-300 opacity-20 blur-3xl transform-gpu"></div>
+  </div>
+
+
+  <div class="bg-white/95 backdrop-blur shadow-2xl rounded-3xl w-full max-w-xl p-6 sm:p-8 relative overflow-hidden border border-purple-100">
+    <!-- Logo watermark -->
+    <div class="absolute inset-0 opacity-5 bg-center bg-no-repeat pointer-events-none"
+         style="background-image: url('{{ url_for('static', filename='images/bambini_logo.png') }}'); background-size: 260px;">
+    </div>
+
+    <!-- Header & Logo -->
+    <div class="flex flex-col items-center text-center mb-6 relative z-10">
+      <img src="{{ url_for('static', filename='images/bambini_logo.png') }}" alt="Bambini Logo" class="w-20 h-20 rounded-full shadow-lg ring-4 ring-purple-100 mb-3 object-contain">
+      <h1 class="text-xl font-extrabold text-slate-900 tracking-tight">Scuola dei Bambini</h1>
+      <p class="text-xs text-purple-700 font-semibold mt-0.5">Campus QR Wallet & Canteen POS</p>
+    </div>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-5 space-y-2 relative z-10">
+          {% for category, message in messages %}
+            <div class="text-xs p-3 rounded-xl border flex items-center justify-between
+              {% if category == 'error' %}bg-rose-50 border-rose-200 text-rose-800
+              {% elif category == 'success' %}bg-emerald-50 border-emerald-200 text-emerald-800
+              {% else %}bg-purple-50 border-purple-200 text-purple-800{% endif %}">
+              <span>{{ message }}</span>
+              <button onclick="this.parentElement.remove()" class="text-slate-400 hover:text-slate-600 font-bold ml-2">&times;</button>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <!-- Portal Selectors -->
+    <div class="space-y-3 relative z-10">
+      <p class="text-xs font-bold text-slate-500 uppercase tracking-wider text-center mb-2">Select Your Portal</p>
+      
+      <!-- Student Portal -->
+      <a href="{{ url_for('signin_student') }}" class="group flex items-center justify-between p-3.5 rounded-2xl border-2 border-purple-200 hover:border-purple-600 bg-purple-50/50 hover:bg-purple-50 transition shadow-sm active:scale-[0.98]">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center text-lg shadow-md group-hover:scale-105 transition">
+            🎓
+          </div>
+          <div class="text-left">
+            <p class="text-sm font-bold text-slate-900 group-hover:text-purple-700 transition">Student Campus Wallet</p>
+            <p class="text-[11px] text-slate-500">Pay meals, top-up balance, generate QR</p>
+          </div>
+        </div>
+        <span class="text-purple-600 font-bold text-lg group-hover:translate-x-1 transition">&rarr;</span>
+      </a>
+
+      <!-- Staff Portal -->
+      <a href="{{ url_for('signin_staff') }}" class="group flex items-center justify-between p-3.5 rounded-2xl border-2 border-slate-200 hover:border-pink-500 bg-slate-50/50 hover:bg-pink-50/50 transition shadow-sm active:scale-[0.98]">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-rose-500 text-white flex items-center justify-center text-lg shadow-md group-hover:scale-105 transition">
+            💼
+          </div>
+          <div class="text-left">
+            <p class="text-sm font-bold text-slate-900 group-hover:text-pink-700 transition">Canteen Staff POS</p>
+            <p class="text-[11px] text-slate-500">Scan student QR, charge orders, sales</p>
+          </div>
+        </div>
+        <span class="text-pink-600 font-bold text-lg group-hover:translate-x-1 transition">&rarr;</span>
+      </a>
+
+      <!-- Admin Portal -->
+      <a href="{{ url_for('signin_admin') }}" class="group flex items-center justify-between p-3.5 rounded-2xl border-2 border-slate-200 hover:border-indigo-600 bg-slate-50/50 hover:bg-indigo-50/50 transition shadow-sm active:scale-[0.98]">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-800 text-white flex items-center justify-center text-lg shadow-md group-hover:scale-105 transition">
+            🛡️
+          </div>
+          <div class="text-left">
+            <p class="text-sm font-bold text-slate-900 group-hover:text-indigo-700 transition">Administrator Portal</p>
+            <p class="text-[11px] text-slate-500">Approve top-ups, audit logs, accounts</p>
+          </div>
+        </div>
+        <span class="text-indigo-600 font-bold text-lg group-hover:translate-x-1 transition">&rarr;</span>
+      </a>
+    </div>
+
+    <!-- Quick Footer Links -->
+    <div class="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 relative z-10">
+      <a href="{{ url_for('index') }}" class="hover:text-purple-700 font-medium transition flex items-center gap-1">
+        <span>&larr;</span> Back to Home
+      </a>
+      <a href="{{ url_for('signup_student') }}" class="text-purple-700 hover:text-purple-900 font-bold transition">
+        New Student? Register
+      </a>
+    </div>
+  </div>
+
+</body>
+</html>

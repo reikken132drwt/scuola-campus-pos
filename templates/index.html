@@ -2,9 +2,35 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Join the Student E-Wallet</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scuola dei Bambini • Campus E-Wallet</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
+        body {
+      font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
+    @-webkit-keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
     @keyframes gradientShift {
       0% { background-position: 0% 50%; }
       50% { background-position: 100% 50%; }
@@ -13,69 +39,75 @@
     .animated-bg {
       background: linear-gradient(-45deg, #d8b4fe, #c4b5fd, #a7f3d0, #c4b5fd);
       background-size: 400% 400%;
+      -webkit-animation: gradientShift 15s ease infinite;
       animation: gradientShift 15s ease infinite;
+      will-change: background-position;
     }
     .glass {
-      background: rgba(255, 255, 255, 0.25);
+      background: rgba(255, 255, 255, 0.35);
       backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.45);
     }
   </style>
 </head>
 <body class="animated-bg min-h-screen flex flex-col text-gray-900">
 
   <!-- Navbar -->
-  <header class="flex justify-between items-center px-8 py-4 glass shadow-lg">
+  <header class="flex flex-wrap justify-between items-center gap-4 px-6 sm:px-8 py-4 glass shadow-lg">
     <div class="flex items-center space-x-3">
-      <img src="{{ url_for('static', filename='images/bambini_logo.png') }}" class="w-12 h-12">
-      <span class="font-bold text-purple-700">Scuola dei Bambini di Sta. Teresita International Montessori School Inc.</span>
+      <img src="{{ url_for('static', filename='images/bambini_logo.png') }}" class="w-12 h-12 rounded-full shadow">
+      <span class="font-bold text-purple-800 text-sm sm:text-base">Scuola dei Bambini di Sta. Teresita International Montessori School Inc.</span>
     </div>
-    <nav class="space-x-6 text-gray-800 font-medium">
-      <a href="#features" class="hover:text-purple-600">Features</a>
-      <a href="#benefits" class="hover:text-purple-600">Benefits</a>
+    <nav class="flex items-center gap-3 sm:gap-5 text-gray-800 font-semibold text-sm">
+      <a href="{{ url_for('signin_student') }}" class="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white shadow transition">Sign In</a>
+      <a href="{{ url_for('signup_student') }}" class="px-4 py-2 rounded-xl bg-white/80 hover:bg-white text-purple-800 border border-purple-200 shadow-xs transition">Register</a>
     </nav>
   </header>
 
   <!-- Hero -->
-  <section class="flex flex-col md:flex-row items-center justify-between flex-1 px-12 py-16">
+  <section class="flex flex-col md:flex-row items-center justify-between flex-1 px-6 sm:px-12 py-12 sm:py-16 gap-10">
     <div class="md:w-1/2 text-center md:text-left">
-      <h1 class="text-6xl font-extrabold bg-gradient-to-r from-purple-400 via-purple-500 to-teal-300 bg-clip-text text-transparent drop-shadow-lg">
+      <h1 class="text-4xl sm:text-6xl font-extrabold bg-gradient-to-r from-purple-700 via-purple-600 to-indigo-600 bg-clip-text text-transparent drop-shadow-sm leading-tight">
         Welcome to Your School E-Wallet
       </h1>
-      <p class="mt-6 text-lg text-gray-800 max-w-md">
-        Sign up today and enjoy fast, secure, and convenient payments for canteen, events, and more.
+      <p class="mt-5 text-base sm:text-lg text-gray-800 max-w-md mx-auto md:mx-0">
+        Sign in to your account for fast, secure, and cashless QR payments at the campus canteen—or register a new account in minutes.
       </p>
-      <div class="mt-8 space-x-4">
-        <a href="{{ url_for('signup_student') }}" class="px-6 py-3 bg-purple-500 text-white rounded-full shadow-lg hover:scale-105">🌟 Sign Up Now</a>
-        <a href="#learn" class="px-6 py-3 bg-teal-500 text-white rounded-full shadow-lg hover:scale-105">Learn More</a>
+      <div class="mt-8 flex flex-wrap items-center justify-center md:justify-start gap-3.5">
+        <a href="{{ url_for('signin_student') }}" class="px-7 py-3.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-extrabold rounded-full shadow-lg hover:scale-105 transition">
+          🔑 Sign In to Wallet
+        </a>
+        <a href="{{ url_for('signup_student') }}" class="px-6 py-3.5 bg-white/85 hover:bg-white text-purple-800 font-bold rounded-full shadow-md border border-purple-200 hover:scale-105 transition">
+          📝 No Account? Register
+        </a>
+      </div>
+      <div class="mt-5 flex items-center justify-center md:justify-start gap-4 text-xs font-bold text-purple-900/80">
+        <a href="{{ url_for('signin_staff') }}" class="hover:underline">💼 Canteen Staff Login</a>
+        <span>•</span>
+        <a href="{{ url_for('signin_admin') }}" class="hover:underline">🛡️ Admin Portal Login</a>
       </div>
     </div>
 
     <!-- Right Feature Panels -->
-    <div class="md:w-1/2 grid grid-cols-1 gap-6 mt-12 md:mt-0">
-      <div class="glass rounded-xl shadow-xl p-6 hover:scale-105 transition">
-        <h3 class="text-xl font-bold text-purple-700 mb-2">⚡ Fast & Secure Payments</h3>
-        <p class="text-gray-700">Use QR codes to pay instantly at the canteen and school events.</p>
+    <div class="md:w-1/2 grid grid-cols-1 gap-5 w-full">
+      <div class="glass rounded-2xl shadow-xl p-6 hover:scale-[1.02] transition">
+        <h3 class="text-lg font-bold text-purple-800 mb-1">⚡ Fast &amp; Secure Payments</h3>
+        <p class="text-sm text-gray-700">Use QR codes to pay instantly at the canteen and school events.</p>
       </div>
-      <div class="glass rounded-xl shadow-xl p-6 hover:scale-105 transition">
-        <h3 class="text-xl font-bold text-purple-700 mb-2">💳 Easy Top-Ups</h3>
-        <p class="text-gray-700">Top-up your wallet via GCash or bank transfers anytime.</p>
+      <div class="glass rounded-2xl shadow-xl p-6 hover:scale-[1.02] transition">
+        <h3 class="text-lg font-bold text-purple-800 mb-1">💳 Easy Top-Ups</h3>
+        <p class="text-sm text-gray-700">Top-up your wallet via Cash at the counter or GCash anytime.</p>
       </div>
-      <div class="glass rounded-xl shadow-xl p-6 hover:scale-105 transition">
-        <h3 class="text-xl font-bold text-purple-700 mb-2">🎉 Student Benefits</h3>
-        <p class="text-gray-700">Enjoy discounts, rewards, and hassle-free transactions.</p>
-      </div>
-      <div class="glass rounded-xl shadow-xl p-6 hover:scale-105 transition">
-        <h3 class="text-xl font-bold text-purple-700 mb-2">🏫 School Events Integration</h3>
-        <p class="text-gray-700">Your wallet works seamlessly with school activities and celebrations.</p>
+      <div class="glass rounded-2xl shadow-xl p-6 hover:scale-[1.02] transition">
+        <h3 class="text-lg font-bold text-purple-800 mb-1">🎉 Live Balance &amp; E-Receipts</h3>
+        <p class="text-sm text-gray-700">Track every purchase and receive instant email receipts automatically.</p>
       </div>
     </div>
   </section>
 
   <!-- Footer -->
-  <footer class="text-center py-6 glass shadow-lg">
-    <p class="text-gray-800">&copy; 2026 
-Scuola dei Bambini di Sta. Teresita International Montessori School Inc. | QRcode Payment System</p>
+  <footer class="text-center py-5 glass shadow-lg text-xs sm:text-sm">
+    <p class="text-gray-800">&copy; 2026 Scuola dei Bambini di Sta. Teresita International Montessori School Inc. | QR Code Payment System</p>
   </footer>
 
 </body>
