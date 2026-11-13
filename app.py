@@ -830,24 +830,28 @@ def is_valid_otp(email, entered_otp):
 
 
 # ---------------- Forgot Password (Student) ----------------
-@app.route("/forgot_password/student", methods=["GET","POST"])
+@app.route("/forgot_password/student", methods=["GET", "POST"])
 def forgot_password_student():
     if request.method == "POST":
         email = (request.form.get("email") or "").strip()
+        session.pop("security_verified_student", None)
 
         conn = get_connection()
         cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
-        cursor.execute("SELECT security_q1, security_q2, security_q3 FROM students WHERE email=%s", (email,))
+        cursor.execute(
+            "SELECT email, security_q1, security_q2, security_q3 FROM students WHERE LOWER(email)=LOWER(%s)",
+            (email,),
+        )
         student = cursor.fetchone()
         conn.close()
 
         if not student:
-            flash("No account found with that email.", "error")
+            flash("No student account found with that email.", "error")
             return redirect(url_for("forgot_password_student"))
 
-        # Store email in session for later steps
-        session["reset_email"] = email
-        session["pending_email"] = email
+        # Store canonical email in session for later steps
+        session["reset_email"] = student["email"]
+        session["pending_email"] = student["email"]
         return render_template("answer_security.html", student=student)
 
     return render_template("forgot_password_student.html")
@@ -856,13 +860,20 @@ def forgot_password_student():
 @app.route("/verify_security_answers", methods=["POST"])
 def verify_security_answers():
     email = session.get("reset_email") or session.get("pending_email")
+    if not email:
+        flash("Your password reset session expired. Please enter your email again.", "error")
+        return redirect(url_for("forgot_password_student"))
+
     a1 = (request.form.get("security_a1") or "").strip().lower()
     a2 = (request.form.get("security_a2") or "").strip().lower()
     a3 = (request.form.get("security_a3") or "").strip().lower()
 
     conn = get_connection()
     cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
-    cursor.execute("SELECT security_a1, security_a2, security_a3 FROM students WHERE email=%s", (email,))
+    cursor.execute(
+        "SELECT security_q1, security_q2, security_q3, security_a1, security_a2, security_a3 FROM students WHERE LOWER(email)=LOWER(%s)",
+        (email,),
+    )
     student = cursor.fetchone()
     conn.close()
 
@@ -872,15 +883,21 @@ def verify_security_answers():
         and (student["security_a2"] or "").strip().lower() == a2
         and (student["security_a3"] or "").strip().lower() == a3
     ):
+        session["security_verified_student"] = True
         return redirect(url_for("reset_password_student"))
     else:
-        flash("Security answers did not match.", "error")
+        flash("One or more security answers did not match. Please try again.", "error")
+        if student:
+            return render_template("answer_security.html", student=student)
         return redirect(url_for("forgot_password_student"))
 
 
-@app.route("/reset_password/student", methods=["GET","POST"])
+@app.route("/reset_password/student", methods=["GET", "POST"])
 def reset_password_student():
     email = session.get("reset_email") or session.get("pending_email")
+    if not email or not session.get("security_verified_student"):
+        flash("Please verify your email and security questions first.", "error")
+        return redirect(url_for("forgot_password_student"))
 
     if request.method == "POST":
         new_password = request.form.get("new_password") or ""
@@ -888,7 +905,7 @@ def reset_password_student():
 
         password_regex = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$")
         if not password_regex.match(new_password):
-            flash("Password must meet complexity requirements.", "error")
+            flash("Password must be at least 8 characters with uppercase, lowercase, number, and special character.", "error")
             return redirect(url_for("reset_password_student"))
 
         if new_password != confirm_password:
@@ -899,10 +916,11 @@ def reset_password_student():
 
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("UPDATE students SET password=%s WHERE email=%s", (hashed_pass, email))
+        cursor.execute("UPDATE students SET password=%s WHERE LOWER(email)=LOWER(%s)", (hashed_pass, email))
         conn.commit()
         conn.close()
 
+        session.pop("security_verified_student", None)
         session["password_reset_flow"] = True
         generate_and_send_otp(email, subject="Confirm Your Password Reset", role="student")
 
@@ -917,63 +935,38 @@ def reset_password_student():
 @app.route("/forgot_password/admin", methods=["GET", "POST"])
 def forgot_password_admin():
     if request.method == "POST":
-        # Direct single-form reset if new_password and security_a1 are submitted together
-        if "new_password" in request.form and "security_a1" in request.form:
-            email = (request.form.get("email") or "").strip()
-            a1 = (request.form.get("security_a1") or "").strip().lower()
-            a2 = (request.form.get("security_a2") or "").strip().lower()
-            a3 = (request.form.get("security_a3") or "").strip().lower()
-            new_pw = request.form.get("new_password") or ""
-
-            conn = get_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT security_a1, security_a2, security_a3 FROM admins WHERE email=%s",
-                (email,),
-            )
-            answers = cursor.fetchone()
-            if (
-                answers
-                and (answers[0] or "").strip().lower() == a1
-                and (answers[1] or "").strip().lower() == a2
-                and (answers[2] or "").strip().lower() == a3
-            ):
-                hashed_pw = hash_user_password(new_pw)
-                cursor.execute("UPDATE admins SET password=%s WHERE email=%s", (hashed_pw, email))
-                conn.commit()
-                conn.close()
-                flash("Password reset successful. Please log in.", "success")
-                return redirect(url_for("signin_admin"))
-            conn.close()
-            flash("Admin email or security answers did not match.", "error")
-            return redirect(url_for("forgot_password_admin"))
-
-        elif "email" in request.form:
+        if "email" in request.form:
             # Step 1: user entered their email
-            email = (request.form["email"] or "").strip()
+            email = (request.form.get("email") or "").strip()
+            session.pop("security_verified_admin", None)
             conn = get_connection()
             cursor = conn.cursor()
             cursor.execute(
-                """SELECT security_q1, security_q2, security_q3 
-                   FROM admins WHERE email=%s""",
+                """SELECT email, security_q1, security_q2, security_q3
+                   FROM admins WHERE LOWER(email)=LOWER(%s)""",
                 (email,),
             )
             record = cursor.fetchone()
             conn.close()
 
             if record:
-                session["pending_email"] = email
+                session["pending_email"] = record[0]
                 return render_template(
                     "forgot_admin_questions.html",
-                    question1=record[0],
-                    question2=record[1],
-                    question3=record[2],
+                    question1=record[1],
+                    question2=record[2],
+                    question3=record[3],
                 )
             else:
                 flash("Admin email not found.", "error")
                 return redirect(url_for("forgot_password_admin"))
         else:
             # Step 2: user answered questions
+            email = session.get("pending_email")
+            if not email:
+                flash("Your password reset session expired. Please enter your email again.", "error")
+                return redirect(url_for("forgot_password_admin"))
+
             a1 = (request.form.get("answer1") or "").strip().lower()
             a2 = (request.form.get("answer2") or "").strip().lower()
             a3 = (request.form.get("answer3") or "").strip().lower()
@@ -981,22 +974,30 @@ def forgot_password_admin():
             conn = get_connection()
             cursor = conn.cursor()
             cursor.execute(
-                """SELECT security_a1, security_a2, security_a3 
-                   FROM admins WHERE email=%s""",
-                (session.get("pending_email"),),
+                """SELECT security_q1, security_q2, security_q3, security_a1, security_a2, security_a3
+                   FROM admins WHERE LOWER(email)=LOWER(%s)""",
+                (email,),
             )
-            answers = cursor.fetchone()
+            record = cursor.fetchone()
             conn.close()
 
             if (
-                answers
-                and (answers[0] or "").strip().lower() == a1
-                and (answers[1] or "").strip().lower() == a2
-                and (answers[2] or "").strip().lower() == a3
+                record
+                and (record[3] or "").strip().lower() == a1
+                and (record[4] or "").strip().lower() == a2
+                and (record[5] or "").strip().lower() == a3
             ):
+                session["security_verified_admin"] = True
                 return redirect(url_for("reset_password_admin"))
             else:
-                flash("Incorrect answers.", "error")
+                flash("Incorrect security answers. Please try again.", "error")
+                if record:
+                    return render_template(
+                        "forgot_admin_questions.html",
+                        question1=record[0],
+                        question2=record[1],
+                        question3=record[2],
+                    )
                 return redirect(url_for("forgot_password_admin"))
 
     return render_template("forgot_admin.html")
@@ -1007,62 +1008,38 @@ def forgot_password_admin():
 @app.route("/forgot_password/staff", methods=["GET", "POST"])
 def forgot_password_staff():
     if request.method == "POST":
-        if "new_password" in request.form and "security_a1" in request.form:
-            email = (request.form.get("email") or "").strip()
-            a1 = (request.form.get("security_a1") or "").strip().lower()
-            a2 = (request.form.get("security_a2") or "").strip().lower()
-            a3 = (request.form.get("security_a3") or "").strip().lower()
-            new_pw = request.form.get("new_password") or ""
-
-            conn = get_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT security_a1, security_a2, security_a3 FROM staff WHERE email=%s",
-                (email,),
-            )
-            answers = cursor.fetchone()
-            if (
-                answers
-                and (answers[0] or "").strip().lower() == a1
-                and (answers[1] or "").strip().lower() == a2
-                and (answers[2] or "").strip().lower() == a3
-            ):
-                hashed_pw = hash_user_password(new_pw)
-                cursor.execute("UPDATE staff SET password=%s WHERE email=%s", (hashed_pw, email))
-                conn.commit()
-                conn.close()
-                flash("Password reset successful. Please log in.", "success")
-                return redirect(url_for("signin_staff"))
-            conn.close()
-            flash("Staff email or security answers did not match.", "error")
-            return redirect(url_for("forgot_password_staff"))
-
-        elif "email" in request.form:
+        if "email" in request.form:
             # Step 1: user entered their email
-            email = (request.form["email"] or "").strip()
+            email = (request.form.get("email") or "").strip()
+            session.pop("security_verified_staff", None)
             conn = get_connection()
             cursor = conn.cursor()
             cursor.execute(
-                """SELECT security_q1, security_q2, security_q3 
-                   FROM staff WHERE email=%s""",
+                """SELECT email, security_q1, security_q2, security_q3
+                   FROM staff WHERE LOWER(email)=LOWER(%s)""",
                 (email,),
             )
             record = cursor.fetchone()
             conn.close()
 
             if record:
-                session["pending_email"] = email
+                session["pending_email"] = record[0]
                 return render_template(
                     "forgot_staff_questions.html",
-                    question1=record[0],
-                    question2=record[1],
-                    question3=record[2],
+                    question1=record[1],
+                    question2=record[2],
+                    question3=record[3],
                 )
             else:
                 flash("Staff email not found.", "error")
                 return redirect(url_for("forgot_password_staff"))
         else:
             # Step 2: user answered questions
+            email = session.get("pending_email")
+            if not email:
+                flash("Your password reset session expired. Please enter your email again.", "error")
+                return redirect(url_for("forgot_password_staff"))
+
             a1 = (request.form.get("answer1") or "").strip().lower()
             a2 = (request.form.get("answer2") or "").strip().lower()
             a3 = (request.form.get("answer3") or "").strip().lower()
@@ -1070,22 +1047,30 @@ def forgot_password_staff():
             conn = get_connection()
             cursor = conn.cursor()
             cursor.execute(
-                """SELECT security_a1, security_a2, security_a3 
-                   FROM staff WHERE email=%s""",
-                (session.get("pending_email"),),
+                """SELECT security_q1, security_q2, security_q3, security_a1, security_a2, security_a3
+                   FROM staff WHERE LOWER(email)=LOWER(%s)""",
+                (email,),
             )
-            answers = cursor.fetchone()
+            record = cursor.fetchone()
             conn.close()
 
             if (
-                answers
-                and (answers[0] or "").strip().lower() == a1
-                and (answers[1] or "").strip().lower() == a2
-                and (answers[2] or "").strip().lower() == a3
+                record
+                and (record[3] or "").strip().lower() == a1
+                and (record[4] or "").strip().lower() == a2
+                and (record[5] or "").strip().lower() == a3
             ):
+                session["security_verified_staff"] = True
                 return redirect(url_for("reset_password_staff"))
             else:
-                flash("Incorrect answers.", "error")
+                flash("Incorrect security answers. Please try again.", "error")
+                if record:
+                    return render_template(
+                        "forgot_staff_questions.html",
+                        question1=record[0],
+                        question2=record[1],
+                        question3=record[2],
+                    )
                 return redirect(url_for("forgot_password_staff"))
 
     return render_template("forgot_staff.html")
@@ -1553,9 +1538,19 @@ def signin_staff():
 # ---------------- Reset Password (Admin) ----------------
 @app.route("/reset_password/admin", methods=["GET","POST"])
 def reset_password_admin():
+    email = session.get("pending_email")
+    if not email or not session.get("security_verified_admin"):
+        flash("Please verify your admin email and security questions first.", "error")
+        return redirect(url_for("forgot_password_admin"))
+
     if request.method == "POST":
-        new_pass = request.form["new_password"]
-        confirm_pass = request.form["confirm_password"]
+        new_pass = request.form.get("new_password") or ""
+        confirm_pass = request.form.get("confirm_password") or ""
+
+        password_regex = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$")
+        if not password_regex.match(new_pass):
+            flash("Password must be at least 8 characters with uppercase, lowercase, number, and special character.", "error")
+            return redirect(url_for("reset_password_admin"))
 
         if new_pass == confirm_pass:
             hashed_pass = hash_user_password(new_pass)
@@ -1564,12 +1559,13 @@ def reset_password_admin():
                 conn = get_connection()
                 cursor = conn.cursor()
                 cursor.execute(
-                    "UPDATE admins SET password=%s WHERE email=%s",
-                    (hashed_pass, session.get("pending_email")),
+                    "UPDATE admins SET password=%s WHERE LOWER(email)=LOWER(%s)",
+                    (hashed_pass, email),
                 )
                 conn.commit()
                 conn.close()
 
+                session.pop("security_verified_admin", None)
                 flash("Password reset successful. Please log in.", "success")
                 return redirect(url_for("signin_admin"))
             except Exception as e:
@@ -1585,9 +1581,19 @@ def reset_password_admin():
 # ---------------- Reset Password (Staff) ----------------
 @app.route("/reset_password/staff", methods=["GET","POST"])
 def reset_password_staff():
+    email = session.get("pending_email")
+    if not email or not session.get("security_verified_staff"):
+        flash("Please verify your staff email and security questions first.", "error")
+        return redirect(url_for("forgot_password_staff"))
+
     if request.method == "POST":
-        new_pass = request.form["new_password"]
-        confirm_pass = request.form["confirm_password"]
+        new_pass = request.form.get("new_password") or ""
+        confirm_pass = request.form.get("confirm_password") or ""
+
+        password_regex = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$")
+        if not password_regex.match(new_pass):
+            flash("Password must be at least 8 characters with uppercase, lowercase, number, and special character.", "error")
+            return redirect(url_for("reset_password_staff"))
 
         if new_pass == confirm_pass:
             hashed_pass = hash_user_password(new_pass)
@@ -1596,12 +1602,13 @@ def reset_password_staff():
                 conn = get_connection()
                 cursor = conn.cursor()
                 cursor.execute(
-                    "UPDATE staff SET password=%s WHERE email=%s",
-                    (hashed_pass, session.get("pending_email")),
+                    "UPDATE staff SET password=%s WHERE LOWER(email)=LOWER(%s)",
+                    (hashed_pass, email),
                 )
                 conn.commit()
                 conn.close()
 
+                session.pop("security_verified_staff", None)
                 flash("Password reset successful. Please log in.", "success")
                 return redirect(url_for("signin_staff"))
             except Exception as e:
@@ -2301,7 +2308,15 @@ def generate_qr():
     # Add timestamp to make QR unique each time (rotates for anti-theft dynamic token)
     unique_data = f"{student_id}-{int(time.time())}"
 
-    qr_img = qrcode.make(unique_data)
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=14,
+        border=2,
+    )
+    qr.add_data(unique_data)
+    qr.make(fit=True)
+    qr_img = qr.make_image(fill_color="#1e1b4b", back_color="#ffffff")
     img_io = io.BytesIO()
     qr_img.save(img_io, 'PNG')
     img_io.seek(0)

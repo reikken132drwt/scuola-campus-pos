@@ -60,7 +60,7 @@
          style="background-image: url('{{ url_for('static', filename='images/bambini_logo.png') }}'); background-size: 300px;">
     </div>
 
-    <!-- Top Navigation Bar (Back + Home + All Portals + Role Badge) -->
+    <!-- Top Navigation Bar (Back + Home + Role Badge) -->
     <div class="flex flex-wrap items-center justify-between gap-2 pb-3.5 mb-4 border-b border-slate-100 relative z-10">
       <div class="flex items-center gap-2">
         <a href="{{ url_for('index') }}" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-purple-50 text-slate-700 hover:text-purple-700 text-xs font-bold transition">
@@ -69,9 +69,6 @@
         </a>
         <a href="{{ url_for('index') }}" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-slate-500 hover:text-purple-700 hover:bg-slate-50 text-xs font-semibold transition">
           <span>Home</span>
-        </a>
-        <a href="{{ url_for('login_page') }}" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-slate-500 hover:text-purple-700 hover:bg-slate-50 text-xs font-semibold transition">
-          <span>All Portals</span>
         </a>
       </div>
       <span class="px-3 py-1 rounded-full bg-purple-100 text-purple-800 text-[11px] font-extrabold uppercase tracking-wider">
@@ -457,11 +454,7 @@
         <span>•</span>
         <button type="button" onclick="switchAuthMode('register')" class="text-purple-700 font-bold hover:underline">Register</button>
       </div>
-      <div class="flex items-center gap-3">
-        <a href="{{ url_for('signin_staff') }}" class="hover:text-purple-700 font-medium">Staff Portal</a>
-        <span>•</span>
-        <a href="{{ url_for('signin_admin') }}" class="hover:text-purple-700 font-medium">Admin Portal</a>
-      </div>
+      <span class="text-slate-400 font-medium">Scuola dei Bambini Campus Wallet</span>
     </div>
   </div>
 
