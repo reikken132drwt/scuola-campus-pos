@@ -684,6 +684,10 @@ def _send_email_via_http(sender_email, to_emails, subject, body_text, body_html)
     sender_name = "Scuola Dei Bambini De Sta. Terisita International Montessori School Inc."
 
     if webhook_url:
+        if "/edit" in webhook_url:
+            print(f"⚠️ [HTTP Webhook Error] EMAIL_WEBHOOK_URL contains '/edit'. Please use the deployed Web App URL ending in '/exec'!", flush=True)
+            return False
+
         payload = _json.dumps({
             "to": ", ".join(to_emails),
             "subject": subject,
@@ -694,12 +698,20 @@ def _send_email_via_http(sender_email, to_emails, subject, body_text, body_html)
         req = _urllib_req.Request(
             webhook_url,
             data=payload,
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            },
             method="POST",
         )
-        with _urllib_req.urlopen(req, timeout=15) as resp:
-            print(f"⚡ [HTTP Webhook Email] Sent to {to_emails} (status {resp.status})", flush=True)
-        return True
+        try:
+            with _urllib_req.urlopen(req, timeout=15) as resp:
+                resp_text = resp.read().decode("utf-8", errors="ignore")
+                print(f"⚡ [HTTP Webhook Email] Sent to {to_emails} (status {resp.status}) -> {resp_text[:80]}", flush=True)
+            return True
+        except Exception as e:
+            print(f"❌ [HTTP Webhook Error] Failed to call webhook: {e}", flush=True)
+            return False
 
     if brevo_key:
         payload = _json.dumps({
@@ -1822,7 +1834,18 @@ def verify_otp():
                 flash("❌ Invalid OTP. Try again.", "error")
                 return redirect(url_for("verify_otp"))
 
-        return render_template("verify_otp.html")
+        pending_otp = (
+            session.get("pending_otp")
+            or session.get("pending_otp_student")
+            or session.get("pending_otp_staff")
+            or session.get("pending_otp_admin")
+        )
+        target_email = (
+            session.get("pending_email")
+            or (session.get("pending_signup") or {}).get("email")
+            or session.get("email")
+        )
+        return render_template("verify_otp.html", demo_otp=pending_otp, target_email=target_email)
     except Exception as e:
         flash(f"Error verifying OTP: {str(e)}", "error")
         return redirect(url_for("login"))
