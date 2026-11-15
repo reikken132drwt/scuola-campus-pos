@@ -424,22 +424,7 @@ def dashboard_registered():
         flash("Unauthorized access. Admin privileges required.", "error")
         return redirect(url_for("signin_admin"))
 
-    conn = get_connection()
-    cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
-
-    cursor.execute("""
-        SELECT full_name, school_id, balance, status,
-               DATEDIFF(CURDATE(), last_active) AS days_inactive
-        FROM students
-        ORDER BY full_name
-    """)
-    registered_students = cursor.fetchall()
-    conn.close()
-
-    return render_template('dashboard_admin.html',
-                           section='registered',
-                           admin=admin,
-                           registered_students=registered_students)
+    return redirect(url_for("dashboard_admin", section="registered"))
 
 # Transactions
 @app.route('/dashboard/transactions')
