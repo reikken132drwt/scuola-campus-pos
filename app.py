@@ -1847,18 +1847,12 @@ def verify_otp():
                 flash("❌ Invalid OTP. Try again.", "error")
                 return redirect(url_for("verify_otp"))
 
-        pending_otp = (
-            session.get("pending_otp")
-            or session.get("pending_otp_student")
-            or session.get("pending_otp_staff")
-            or session.get("pending_otp_admin")
-        )
         target_email = (
             session.get("pending_email")
             or (session.get("pending_signup") or {}).get("email")
             or session.get("email")
         )
-        return render_template("verify_otp.html", demo_otp=pending_otp, target_email=target_email)
+        return render_template("verify_otp.html", target_email=target_email)
     except Exception as e:
         flash(f"Error verifying OTP: {str(e)}", "error")
         return redirect(url_for("login"))

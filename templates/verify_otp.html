@@ -98,16 +98,6 @@
       </button>
     </form>
 
-    {% if demo_otp %}
-    <div class="mt-4 p-3.5 bg-purple-50/80 border border-purple-200/90 rounded-2xl text-center text-xs text-purple-950 shadow-xs relative z-10">
-      <div class="flex items-center justify-center gap-1.5 font-bold text-purple-900">
-        <span>⚡ Verification Code:</span>
-        <span class="font-mono text-base font-extrabold text-purple-800 bg-white px-3 py-0.5 rounded-lg border border-purple-300 tracking-widest shadow-xs">{{ demo_otp }}</span>
-      </div>
-      <p class="text-[11px] text-purple-600 mt-1 font-medium">Use this code directly if your cloud host has outbound email delay, or check Render Logs.</p>
-    </div>
-    {% endif %}
-
     <p class="text-center text-xs text-slate-600 mt-5 relative z-10">
       Didn't receive the code?
       <a href="{{ url_for('resend_otp') }}" class="text-purple-700 font-bold hover:underline ml-1">Resend OTP</a>
