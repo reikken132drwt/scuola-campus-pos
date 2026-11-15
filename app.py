@@ -688,27 +688,40 @@ def _send_email_via_http(sender_email, to_emails, subject, body_text, body_html)
             print(f"⚠️ [HTTP Webhook Error] EMAIL_WEBHOOK_URL contains '/edit'. Please use the deployed Web App URL ending in '/exec'!", flush=True)
             return False
 
-        payload = _json.dumps({
+        payload_dict = {
             "to": ", ".join(to_emails),
             "subject": subject,
             "text": body_text or "",
             "html": body_html or "",
             "senderName": sender_name,
-        }).encode("utf-8")
-        req = _urllib_req.Request(
-            webhook_url,
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            },
-            method="POST",
-        )
+        }
         try:
-            with _urllib_req.urlopen(req, timeout=15) as resp:
-                resp_text = resp.read().decode("utf-8", errors="ignore")
-                print(f"⚡ [HTTP Webhook Email] Sent to {to_emails} (status {resp.status}) -> {resp_text[:80]}", flush=True)
-            return True
+            try:
+                import requests as _requests
+                resp = _requests.post(
+                    webhook_url,
+                    json=payload_dict,
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                    timeout=15,
+                    allow_redirects=True,
+                )
+                print(f"⚡ [HTTP Webhook Email] Sent to {to_emails} (status {resp.status_code}) -> {resp.text[:80]}", flush=True)
+                return resp.status_code in (200, 201, 302)
+            except ImportError:
+                payload = _json.dumps(payload_dict).encode("utf-8")
+                req = _urllib_req.Request(
+                    webhook_url,
+                    data=payload,
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    },
+                    method="POST",
+                )
+                with _urllib_req.urlopen(req, timeout=15) as resp:
+                    resp_text = resp.read().decode("utf-8", errors="ignore")
+                    print(f"⚡ [HTTP Webhook Email] Sent to {to_emails} (status {resp.status}) -> {resp_text[:80]}", flush=True)
+                return True
         except Exception as e:
             print(f"❌ [HTTP Webhook Error] Failed to call webhook: {e}", flush=True)
             return False
