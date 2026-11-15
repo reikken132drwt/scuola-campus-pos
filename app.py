@@ -671,16 +671,116 @@ FROM_EMAIL = "sanielken11@gmail.com"
 REPLY_TO_EMAIL = "sanielken11@gmail.com"
 
 
-def _send_email_thread(sender_email, password, to_emails, msg_str):
+def _send_email_via_http(sender_email, to_emails, subject, body_text, body_html):
+    """Send email over HTTPS (port 443) when an HTTP email provider env var is configured.
+    Render Free Tier blocks outbound SMTP ports (25, 465, 587), so HTTPS APIs/webhooks are required there.
+    """
+    import json as _json
+    import urllib.request as _urllib_req
+
+    webhook_url = (os.environ.get("EMAIL_WEBHOOK_URL") or "").strip()
+    brevo_key = (os.environ.get("BREVO_API_KEY") or "").strip()
+    sendgrid_key = (os.environ.get("SENDGRID_API_KEY") or "").strip()
+    resend_key = (os.environ.get("RESEND_API_KEY") or "").strip()
+
+    sender_name = "Scuola Dei Bambini De Sta. Terisita International Montessori School Inc."
+
+    if webhook_url:
+        payload = _json.dumps({
+            "to": ", ".join(to_emails),
+            "subject": subject,
+            "text": body_text or "",
+            "html": body_html or "",
+            "senderName": sender_name,
+        }).encode("utf-8")
+        req = _urllib_req.Request(
+            webhook_url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with _urllib_req.urlopen(req, timeout=15) as resp:
+            print(f"⚡ [HTTP Webhook Email] Sent to {to_emails} (status {resp.status})", flush=True)
+        return True
+
+    if brevo_key:
+        payload = _json.dumps({
+            "sender": {"name": sender_name, "email": sender_email},
+            "to": [{"email": addr} for addr in to_emails],
+            "subject": subject,
+            "htmlContent": body_html or f"<pre>{body_text or ''}</pre>",
+            "textContent": body_text or "",
+        }).encode("utf-8")
+        req = _urllib_req.Request(
+            "https://api.brevo.com/v3/smtp/email",
+            data=payload,
+            headers={"api-key": brevo_key, "Content-Type": "application/json", "Accept": "application/json"},
+            method="POST",
+        )
+        with _urllib_req.urlopen(req, timeout=15) as resp:
+            print(f"⚡ [Brevo API Email] Sent to {to_emails} (status {resp.status})", flush=True)
+        return True
+
+    if sendgrid_key:
+        content_list = []
+        if body_text:
+            content_list.append({"type": "text/plain", "value": body_text})
+        if body_html:
+            content_list.append({"type": "text/html", "value": body_html})
+        payload = _json.dumps({
+            "personalizations": [{"to": [{"email": addr} for addr in to_emails]}],
+            "from": {"email": sender_email, "name": sender_name},
+            "subject": subject,
+            "content": content_list or [{"type": "text/plain", "value": ""}],
+        }).encode("utf-8")
+        req = _urllib_req.Request(
+            "https://api.sendgrid.com/v3/mail/send",
+            data=payload,
+            headers={"Authorization": f"Bearer {sendgrid_key}", "Content-Type": "application/json"},
+            method="POST",
+        )
+        with _urllib_req.urlopen(req, timeout=15) as resp:
+            print(f"⚡ [SendGrid API Email] Sent to {to_emails} (status {resp.status})", flush=True)
+        return True
+
+    if resend_key:
+        resend_from = (os.environ.get("RESEND_FROM_EMAIL") or f"{sender_name} <onboarding@resend.dev>").strip()
+        payload = _json.dumps({
+            "from": resend_from,
+            "to": to_emails,
+            "subject": subject,
+            "html": body_html or "",
+            "text": body_text or "",
+        }).encode("utf-8")
+        req = _urllib_req.Request(
+            "https://api.resend.com/emails",
+            data=payload,
+            headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
+            method="POST",
+        )
+        with _urllib_req.urlopen(req, timeout=15) as resp:
+            print(f"⚡ [Resend API Email] Sent to {to_emails} (status {resp.status})", flush=True)
+        return True
+
+    return False
+
+
+def _send_email_thread(sender_email, password, to_emails, msg_str, subject="", body_text=None, body_html=None):
+    try:
+        if _send_email_via_http(sender_email, to_emails, subject, body_text, body_html):
+            return
+    except Exception as http_err:
+        print(f"❌ [HTTP Email] Error sending to {to_emails}: {http_err}", flush=True)
+
     try:
         server = smtplib.SMTP("smtp.gmail.com", 587, timeout=10)  # Gmail SMTP
         server.starttls()
         server.login(sender_email, password)
         server.sendmail(sender_email, to_emails, msg_str)
         server.quit()
-        print(f"⚡ [Async Email] Sent successfully to {to_emails}")
+        print(f"⚡ [Async Email] Sent successfully to {to_emails}", flush=True)
     except Exception as e:
-        print(f"❌ [Async Email] Error sending to {to_emails}: {str(e)}")
+        print(f"❌ [Async Email] Error sending to {to_emails}: {str(e)}", flush=True)
 
 
 def send_email(to_emails=None, subject="", body_text=None, body_html=None, to=None, body=None, async_send=True):
@@ -730,11 +830,15 @@ def send_email(to_emails=None, subject="", body_text=None, body_html=None, to=No
     msg_str = msg_root.as_string()
     if async_send:
         # ⚡ Run in background thread so the HTTP request completes in <20ms instead of waiting 3-5 seconds!
-        threading.Thread(target=_send_email_thread, args=(sender_email, password, to_emails, msg_str), daemon=True).start()
+        threading.Thread(
+            target=_send_email_thread,
+            args=(sender_email, password, to_emails, msg_str, subject, body_text, body_html),
+            daemon=True,
+        ).start()
         return True
     else:
         try:
-            _send_email_thread(sender_email, password, to_emails, msg_str)
+            _send_email_thread(sender_email, password, to_emails, msg_str, subject, body_text, body_html)
             return True
         except Exception:
             return False
@@ -766,9 +870,9 @@ def generate_and_send_otp(email, subject="Your Secure Login OTP", role="student"
     except Exception as e:
         print(f"Warning saving OTP to DB: {e}")
 
-    print(f"\n==========================================")
-    print(f"🔐 [OTP GENERATED] Role: {role.upper()} | Email: {email} | OTP: {otp}")
-    print(f"==========================================\n")
+    print(f"\n==========================================", flush=True)
+    print(f"🔐 [OTP GENERATED] Role: {role.upper()} | Email: {email} | OTP: {otp}", flush=True)
+    print(f"==========================================\n", flush=True)
 
     # Role-specific body text
     if role == "student":
