@@ -318,8 +318,10 @@ def signup():
 
 # ---------------- Multi-Tab Role-Independent Session Helpers ----------------
 def _get_logged_in_student():
+    if session.get("role") != "student":
+        return None
     student_id = session.get("student_id")
-    student_email = session.get("student_email") or (session.get("email") if session.get("role") == "student" else None)
+    student_email = session.get("student_email") or session.get("email")
     if not student_id and not student_email:
         return None
     try:
@@ -340,8 +342,10 @@ def _get_logged_in_student():
 
 
 def _get_logged_in_staff():
+    if session.get("role") != "staff":
+        return None
     staff_id = session.get("staff_id")
-    staff_email = session.get("staff_email") or (session.get("email") if session.get("role") == "staff" else None)
+    staff_email = session.get("staff_email") or session.get("email")
     if not staff_id and not staff_email:
         return None
     try:
@@ -362,8 +366,10 @@ def _get_logged_in_staff():
 
 
 def _get_logged_in_admin():
+    if session.get("role") != "admin":
+        return None
     admin_id = session.get("admin_id")
-    admin_email = session.get("admin_email") or (session.get("email") if session.get("role") == "admin" else None)
+    admin_email = session.get("admin_email") or session.get("email")
     if not admin_id and not admin_email:
         return None
     try:
@@ -413,6 +419,11 @@ def admin_pending_topups():
 # Registered Students
 @app.route('/admin/registered')
 def dashboard_registered():
+    admin = _get_logged_in_admin()
+    if not admin:
+        flash("Unauthorized access. Admin privileges required.", "error")
+        return redirect(url_for("signin_admin"))
+
     conn = get_connection()
     cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
 
@@ -427,11 +438,18 @@ def dashboard_registered():
 
     return render_template('dashboard_admin.html',
                            section='registered',
+                           admin=admin,
                            registered_students=registered_students)
 
 # Transactions
 @app.route('/dashboard/transactions')
 def dashboard_transactions():
+    admin = _get_logged_in_admin()
+    staff = _get_logged_in_staff()
+    if not admin and not staff:
+        flash("Unauthorized access. Admin or Staff privileges required.", "error")
+        return redirect(url_for("signin_staff"))
+
     start = request.args.get("start_date")
     end = request.args.get("end_date")
 
@@ -482,34 +500,14 @@ def logout():
     elif "/dashboard/student" in ref or "/student" in ref:
         role = "student"
 
+    session.clear()
+    flash("You have been safely logged out.", "success")
     if role == "staff":
-        session.pop("staff_id", None)
-        session.pop("staff_email", None)
-        if session.get("role") == "staff":
-            session.pop("role", None)
-            session.pop("email", None)
-        flash("You have been safely logged out.", "success")
         return redirect(url_for("signin_staff"))
     elif role == "admin":
-        session.pop("admin_id", None)
-        session.pop("admin_email", None)
-        if session.get("role") == "admin":
-            session.pop("role", None)
-            session.pop("email", None)
-        flash("You have been safely logged out.", "success")
         return redirect(url_for("signin_admin"))
-    elif role == "student":
-        session.pop("student_id", None)
-        session.pop("student_email", None)
-        if session.get("role") == "student":
-            session.pop("role", None)
-            session.pop("email", None)
-        flash("You have been safely logged out.", "success")
-        return redirect(url_for("signin_student"))
     else:
-        session.clear()
-        flash("You have been safely logged out.", "success")
-        return redirect(url_for("login_page"))
+        return redirect(url_for("signin_student"))
 
 @app.route("/profile")
 def profile_student():
@@ -1195,11 +1193,11 @@ def login():
         student = cursor.fetchone()
         if student and verify_user_password(student[2], password):
             conn.close()
+            session.clear()
             session["role"] = "student"
             session["student_id"] = student[0]
             session["student_email"] = student[1]
             session["pending_email"] = student[1]
-            session.pop("student_signup", None)
             generate_and_send_otp(email, subject="Your Student OTP Code", role="student")
             return redirect(url_for("verify_otp"))
 
@@ -1208,6 +1206,7 @@ def login():
         admin = cursor.fetchone()
         if admin and verify_user_password(admin[2], password):
             conn.close()
+            session.clear()
             session["role"] = "admin"
             session["admin_id"] = admin[0]
             session["admin_email"] = admin[1]
@@ -1220,6 +1219,7 @@ def login():
         staff = cursor.fetchone()
         if staff and verify_user_password(staff[2], password):
             conn.close()
+            session.clear()
             session["role"] = "staff"
             session["staff_id"] = staff[0]
             session["staff_email"] = staff[1]
@@ -1513,79 +1513,83 @@ def signup_staff():
 
 
 def _attempt_role_login(email_input, password, preferred_role="student"):
-    """Try authenticating against preferred_role first, then fallback to other roles if matched."""
+    """Strictly authenticate against preferred_role only to enforce role isolation and prevent cross-role access."""
     email_clean = (email_input or "").strip()
     conn = get_connection()
     cursor = conn.cursor()
 
-    role_Order = [preferred_role] + [r for r in ("student", "staff", "admin") if r != preferred_role]
-    found_email_in_roles = []
+    if preferred_role == "student":
+        cursor.execute(
+            "SELECT student_id, email, password FROM students WHERE LOWER(email)=LOWER(%s) OR school_id=%s",
+            (email_clean, email_clean),
+        )
+        row = cursor.fetchone()
+        conn.close()
+        if not row:
+            flash(f"❌ No student account found for '{email_clean}'.", "error")
+            return redirect(url_for("signin_student"))
+        if not verify_user_password(row[2], password):
+            flash(f"❌ Incorrect password for {email_clean}. Please check your password or use Forgot Password.", "error")
+            return redirect(url_for("signin_student"))
 
-    for role in role_Order:
-        if role == "student":
-            cursor.execute(
-                "SELECT student_id, email, password FROM students WHERE LOWER(email)=LOWER(%s) OR school_id=%s",
-                (email_clean, email_clean),
-            )
-            row = cursor.fetchone()
-            if row:
-                found_email_in_roles.append("student")
-                if verify_user_password(row[2], password):
-                    conn.close()
-                    session["role"] = "student"
-                    session["student_id"] = row[0]
-                    session["student_email"] = row[1]
-                    session["pending_email"] = row[1]
-                    session.pop("student_signup", None)
-                    session.pop("password_reset_flow", None)
-                    generate_and_send_otp(row[1], subject="Your Secure Login OTP", role="student")
-                    flash("OTP sent to your email. Please verify.", "info")
-                    return redirect(url_for("verify_otp"))
-        elif role == "admin":
-            cursor.execute(
-                "SELECT admin_id, email, password FROM admins WHERE LOWER(email)=LOWER(%s)",
-                (email_clean,),
-            )
-            row = cursor.fetchone()
-            if row:
-                found_email_in_roles.append("admin")
-                if verify_user_password(row[2], password):
-                    conn.close()
-                    session["role"] = "admin"
-                    session["admin_id"] = row[0]
-                    session["admin_email"] = row[1]
-                    session["pending_email"] = row[1]
-                    session.pop("student_signup", None)
-                    generate_and_send_otp(row[1], subject="Your Admin Secure Login OTP", role="admin")
-                    flash("OTP sent to your email. Please verify.", "info")
-                    return redirect(url_for("verify_otp"))
-        elif role == "staff":
-            cursor.execute(
-                "SELECT staff_id, email, password FROM staff WHERE LOWER(email)=LOWER(%s)",
-                (email_clean,),
-            )
-            row = cursor.fetchone()
-            if row:
-                found_email_in_roles.append("staff")
-                if verify_user_password(row[2], password):
-                    conn.close()
-                    session["role"] = "staff"
-                    session["staff_id"] = row[0]
-                    session["staff_email"] = row[1]
-                    session["pending_email"] = row[1]
-                    session.pop("student_signup", None)
-                    generate_and_send_otp(row[1], subject="Your Staff Secure Login OTP", role="staff")
-                    flash("OTP sent to your email. Please verify.", "info")
-                    return redirect(url_for("verify_otp"))
+        session.clear()
+        session["role"] = "student"
+        session["student_id"] = row[0]
+        session["student_email"] = row[1]
+        session["pending_email"] = row[1]
+        generate_and_send_otp(row[1], subject="Your Secure Login OTP", role="student")
+        flash("OTP sent to your email. Please verify.", "info")
+        return redirect(url_for("verify_otp"))
+
+    elif preferred_role == "staff":
+        cursor.execute(
+            "SELECT staff_id, email, password FROM staff WHERE LOWER(email)=LOWER(%s)",
+            (email_clean,),
+        )
+        row = cursor.fetchone()
+        conn.close()
+        if not row:
+            flash(f"❌ Access Denied: No Canteen Staff account registered for '{email_clean}'.", "error")
+            return redirect(url_for("signin_staff"))
+        if not verify_user_password(row[2], password):
+            flash(f"❌ Incorrect password for {email_clean}. Please check your password or use Forgot Password.", "error")
+            return redirect(url_for("signin_staff"))
+
+        session.clear()
+        session["role"] = "staff"
+        session["staff_id"] = row[0]
+        session["staff_email"] = row[1]
+        session["pending_email"] = row[1]
+        generate_and_send_otp(row[1], subject="Your Staff Secure Login OTP", role="staff")
+        flash("OTP sent to your email. Please verify.", "info")
+        return redirect(url_for("verify_otp"))
+
+    elif preferred_role == "admin":
+        cursor.execute(
+            "SELECT admin_id, email, password FROM admins WHERE LOWER(email)=LOWER(%s)",
+            (email_clean,),
+        )
+        row = cursor.fetchone()
+        conn.close()
+        if not row:
+            flash(f"❌ Access Denied: No Admin account registered for '{email_clean}'.", "error")
+            return redirect(url_for("signin_admin"))
+        if not verify_user_password(row[2], password):
+            flash(f"❌ Incorrect password for {email_clean}. Please check your password or use Forgot Password.", "error")
+            return redirect(url_for("signin_admin"))
+
+        session.clear()
+        session["role"] = "admin"
+        session["admin_id"] = row[0]
+        session["admin_email"] = row[1]
+        session["pending_email"] = row[1]
+        generate_and_send_otp(row[1], subject="Your Admin Secure Login OTP", role="admin")
+        flash("OTP sent to your email. Please verify.", "info")
+        return redirect(url_for("verify_otp"))
 
     conn.close()
-    if found_email_in_roles:
-        print(f"[LOGIN FAILED] Input: {email_clean} | Portal: {preferred_role} | Found in {found_email_in_roles} but password did not match")
-        flash(f"❌ Incorrect password for {email_clean}. Please check your password or use Forgot Password.", "error")
-    else:
-        print(f"[LOGIN FAILED] Input: {email_clean} | Portal: {preferred_role} | Account not found in DB")
-        flash(f"❌ No {preferred_role} account found for '{email_clean}'. Please Sign Up first.", "error")
-    return None
+    flash("Invalid portal selection.", "error")
+    return redirect(url_for("signin_student"))
 
 
 # ---------------- Student Sign In ----------------
@@ -3052,13 +3056,18 @@ def manual_topup():
 # ---------------- Search Students ----------------
 @app.route('/admin/search_students')
 def search_students():
+    admin = _get_logged_in_admin()
+    if not admin:
+        flash("Unauthorized access. Admin privileges required.", "error")
+        return redirect(url_for("signin_admin"))
+
     query = request.args.get("q", "")
     conn = get_connection()
     cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
     cursor.execute("SELECT student_id, full_name, school_id, balance FROM students WHERE full_name LIKE %s", ("%" + query + "%",))
     results = cursor.fetchall()
     conn.close()
-    return render_template('dashboard_admin.html', section='search', students=results)
+    return render_template('dashboard_admin.html', section='search', admin=admin, students=results)
 
 
 
@@ -3066,9 +3075,15 @@ def search_students():
 
 @app.route("/admin/topup", methods=["POST"])
 def admin_topup():
-    data = request.get_json()
-    student_id = data["student_id"]
-    amount = float(data["amount"])
+    admin = _get_logged_in_admin()
+    if not admin:
+        return jsonify({"success": False, "message": "Unauthorized access. Admin privileges required."}), 401
+
+    data = request.get_json() or {}
+    student_id = data.get("student_id")
+    amount = float(data.get("amount") or 0)
+    if not student_id or amount <= 0:
+        return jsonify({"success": False, "message": "Invalid topup parameters."}), 400
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -3531,6 +3546,8 @@ def dashboard_staff():
 # Add New Canteen Product (with Picture, Name, Price, Stock)
 @app.route("/staff_add_product", methods=["POST"])
 def staff_add_product():
+    if not _get_logged_in_staff() and not _get_logged_in_admin():
+        return jsonify({"success": False, "message": "Unauthorized access. Staff privileges required."}), 401
     try:
         name = (request.form.get("name") or "").strip()
         description = (request.form.get("description") or "").strip() or "Freshly prepared canteen item"
@@ -3612,6 +3629,8 @@ def staff_add_product():
 # Edit Existing Canteen Product (with Picture, Name, Price, Description, Category, Stock)
 @app.route("/staff_edit_product/<int:product_id>", methods=["POST"])
 def staff_edit_product(product_id):
+    if not _get_logged_in_staff() and not _get_logged_in_admin():
+        return jsonify({"success": False, "message": "Unauthorized access. Staff privileges required."}), 401
     try:
         name = (request.form.get("name") or "").strip()
         description = (request.form.get("description") or "").strip() or "Freshly prepared canteen item"
@@ -3685,6 +3704,8 @@ def staff_edit_product(product_id):
 
 @app.route("/staff_delete_product/<int:product_id>", methods=["POST"])
 def staff_delete_product(product_id):
+    if not _get_logged_in_staff() and not _get_logged_in_admin():
+        return jsonify({"success": False, "message": "Unauthorized access. Staff privileges required."}), 401
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -3699,6 +3720,8 @@ def staff_delete_product(product_id):
 # Preview Student Details upon QR scan
 @app.route("/staff_preview_student_qr", methods=["POST"])
 def staff_preview_student_qr():
+    if not _get_logged_in_staff() and not _get_logged_in_admin():
+        return jsonify({"success": False, "message": "Unauthorized access. Staff privileges required."}), 401
     try:
         data = request.get_json() or {}
         student_qr = str(data.get("studentQr") or "").strip()
@@ -3870,13 +3893,16 @@ def send_student_pos_receipt_email(
 
 @app.route("/staff_send_receipt_email", methods=["POST"])
 def staff_send_receipt_email():
+    staff = _get_logged_in_staff()
+    admin = _get_logged_in_admin()
+    if not staff and not admin:
+        return jsonify({"success": False, "message": "Unauthorized access. Staff privileges required."}), 401
     try:
         data = request.get_json() or {}
         txn_id = data.get("txn_id")
         recipient_email = str(data.get("email") or "").strip()
 
-        staff = _get_logged_in_staff()
-        staff_name = staff["full_name"] if staff else "Canteen Staff"
+        staff_name = staff["full_name"] if staff else (admin["full_name"] if admin else "Canteen Staff")
 
         conn = get_connection()
         cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
@@ -3970,14 +3996,17 @@ def _deduct_canteen_product_stock(cursor, cart_items):
 # Scan QR & Registered Student Checkout
 @app.route("/staff_qr_transaction", methods=["POST"])
 def staff_qr_transaction():
+    staff = _get_logged_in_staff()
+    admin = _get_logged_in_admin()
+    if not staff and not admin:
+        return jsonify({"success": False, "message": "Unauthorized access. Staff privileges required."}), 401
     try:
         data = request.get_json() or {}
         student_qr = str(data.get("studentQr") or "").strip()
         amount = Decimal(str(data.get("amount") or 0))
         mode = (data.get("mode") or "wallet").lower()
-        staff = _get_logged_in_staff()
-        staff_id = staff["staff_id"] if staff else session.get("staff_id")
-        staff_name = staff["full_name"] if staff else "Canteen Cashier"
+        staff_id = staff["staff_id"] if staff else None
+        staff_name = staff["full_name"] if staff else (admin["full_name"] if admin else "Canteen Cashier")
 
         if not student_qr or amount <= 0:
             return jsonify({"success": False, "message": "Invalid QR or order amount!"})
@@ -4148,6 +4177,8 @@ def staff_qr_transaction():
 # Search Student
 @app.route("/staff_search_student_transaction", methods=["POST"])
 def staff_search_student_transaction():
+    if not _get_logged_in_staff() and not _get_logged_in_admin():
+        return jsonify({"success": False, "message": "Unauthorized access. Staff privileges required."}), 401
     try:
         data = request.get_json()
         print("Incoming payload:", data)  # ✅ Debug print
@@ -4191,6 +4222,8 @@ def staff_search_student_transaction():
 # Unregistered Student
 @app.route("/staff_unregistered_transaction", methods=["POST"])
 def staff_unregistered_transaction():
+    if not _get_logged_in_staff() and not _get_logged_in_admin():
+        return jsonify({"success": False, "message": "Unauthorized access. Staff privileges required."}), 401
     data = request.get_json()
     school_id = data.get("schoolId")
     amount = data.get("amount")
@@ -4206,6 +4239,8 @@ def staff_unregistered_transaction():
 # Visitor/Personnel
 @app.route("/staff_visitor_transaction", methods=["POST"])
 def staff_visitor_transaction():
+    if not _get_logged_in_staff() and not _get_logged_in_admin():
+        return jsonify({"success": False, "message": "Unauthorized access. Staff privileges required."}), 401
     data = request.get_json()
     amount = data.get("amount")
     mode = data.get("mode")
@@ -4220,11 +4255,15 @@ def staff_visitor_transaction():
 
 @app.route("/purchase_unregistered", methods=["POST"])
 def purchase_unregistered():
-    if "staff_id" not in session:
-        return redirect(url_for("login"))
+    staff = _get_logged_in_staff()
+    admin = _get_logged_in_admin()
+    if not staff and not admin:
+        flash("Unauthorized access. Staff privileges required.", "error")
+        return redirect(url_for("signin_staff"))
 
     customer_name = request.form["customer_name"]
     amount = float(request.form["amount"])
+    staff_id = staff["staff_id"] if staff else None
 
     conn = get_connection()
     cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
@@ -4232,17 +4271,22 @@ def purchase_unregistered():
     cursor.execute("""
         INSERT INTO transactions (student_id, customer_name, staff_id, amount, status, type, payment_mode, created_at)
         VALUES (NULL, %s, %s, %s, 'completed', 'purchase', 'cash', NOW())
-    """, (customer_name, session["staff_id"], amount))
+    """, (customer_name, staff_id, amount))
 
     conn.commit()
     conn.close()
 
     flash("Unregistered purchase recorded successfully.", "success")
-    return redirect(url_for("dashboard_admin"))
+    return redirect(url_for("dashboard_staff") if staff else url_for("dashboard_admin"))
 
 
 @app.route("/staff_students")
 def staff_students():
+    staff = _get_logged_in_staff()
+    admin = _get_logged_in_admin()
+    if not staff and not admin:
+        return jsonify(success=False, message="Unauthorized access. Staff or Admin privileges required."), 401
+
     school_id = request.args.get("id")
     conn = get_connection()
     cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
@@ -4265,6 +4309,10 @@ def staff_students():
 
 @app.route("/staff_calculator_sale", methods=["POST"])
 def staff_calculator_sale():
+    staff = _get_logged_in_staff()
+    admin = _get_logged_in_admin()
+    if not staff and not admin:
+        return jsonify({"success": False, "message": "Unauthorized access. Staff privileges required."}), 401
     try:
         data = request.get_json() or {}
         amount = Decimal(str(data.get("amount") or 0))
@@ -4276,9 +4324,8 @@ def staff_calculator_sale():
         if amount <= 0:
             return jsonify({"success": False, "message": "Please calculate or enter an amount greater than ₱0.00."})
 
-        staff = _get_logged_in_staff()
-        staff_id = staff["staff_id"] if staff else session.get("staff_id")
-        staff_name = staff["full_name"] if staff else "Canteen Cashier"
+        staff_id = staff["staff_id"] if staff else None
+        staff_name = staff["full_name"] if staff else (admin["full_name"] if admin else "Canteen Cashier")
         now_dt = datetime.datetime.now()
 
         conn = get_connection()
