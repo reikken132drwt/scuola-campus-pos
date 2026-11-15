@@ -8,6 +8,7 @@ flask_session/
 .DS_Store
 cloudflared.exe
 *.db
+!school_system_local.db
 
 # Security & Credentials
 *.pem
