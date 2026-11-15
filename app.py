@@ -2985,11 +2985,13 @@ def dashboard_admin():
     cursor.execute("SELECT * FROM topups WHERE status='pending' ORDER BY created_at DESC")
     pending_topups = cursor.fetchall()
 
-    # Transactions list
+    # Transactions list (Complete master financial audit log)
     cursor.execute("""
         SELECT t.transaction_id, t.created_at, t.type, t.amount, t.payment_mode,
-               COALESCE(s.full_name, a.full_name) AS staff_name,
-               st.full_name AS customer_name, st.school_id AS student_name, t.status, t.remarks
+               COALESCE(s.full_name, a.full_name, 'Canteen Cashier') AS staff_name,
+               COALESCE(st.full_name, t.customer_name, 'Walk-in Customer') AS customer_name,
+               COALESCE(st.school_id, '') AS student_name,
+               t.status, t.remarks, t.student_id
         FROM transactions t
         LEFT JOIN staff s ON t.staff_id = s.staff_id
         LEFT JOIN admins a ON t.admin_id = a.admin_id
@@ -2998,14 +3000,21 @@ def dashboard_admin():
     """)
     transactions = cursor.fetchall()
 
-    # Unregistered transactions
+    # Walk-In & Counter Sales (Cash, GCash, and Walk-in POS purchases)
     cursor.execute("""
-        SELECT u.transaction_id, u.created_at, u.amount, u.qr_code,
-               u.customer_name, u.contact_number, u.status,
-               s.full_name AS staff_name
-        FROM unregistered_transactions u
-        LEFT JOIN staff s ON u.staff_id = s.staff_id
-        ORDER BY u.created_at DESC
+        SELECT t.transaction_id, t.created_at, t.amount, t.payment_mode,
+               t.status, t.remarks,
+               COALESCE(s.full_name, a.full_name, 'Canteen Cashier') AS staff_name,
+               COALESCE(st.full_name, t.customer_name, 'Walk-in Customer') AS customer_name,
+               COALESCE(st.school_id, '') AS school_id,
+               t.student_id
+        FROM transactions t
+        LEFT JOIN staff s ON t.staff_id = s.staff_id
+        LEFT JOIN admins a ON t.admin_id = a.admin_id
+        LEFT JOIN students st ON t.student_id = st.student_id
+        WHERE t.type != 'topup'
+          AND (t.student_id IS NULL OR LOWER(COALESCE(t.payment_mode, '')) IN ('cash', 'gcash', 'ewallet', 'e-wallet'))
+        ORDER BY t.created_at DESC
     """)
     unregistered_transactions = cursor.fetchall() or []
 
@@ -4063,9 +4072,9 @@ def staff_qr_transaction():
             new_balance = current_balance
             cursor.execute(
                 """INSERT INTO transactions
-                   (student_id, staff_id, amount, previous_balance, new_balance, status, remarks, type, payment_mode, created_at)
-                   VALUES (%s,%s,%s,%s,%s,'completed',%s,'purchase','cash',NOW())""",
-                (student["student_id"], staff_id, amount, current_balance, new_balance, remarks_val),
+                   (student_id, customer_name, staff_id, amount, previous_balance, new_balance, status, remarks, type, payment_mode, created_at)
+                   VALUES (%s,%s,%s,%s,%s,%s,'completed',%s,'purchase','cash',NOW())""",
+                (student["student_id"], student["full_name"], staff_id, amount, current_balance, new_balance, remarks_val),
             )
             txn_id = getattr(cursor, "lastrowid", None)
             _deduct_canteen_product_stock(cursor, cart_items)
@@ -4101,9 +4110,9 @@ def staff_qr_transaction():
             new_balance = current_balance
             cursor.execute(
                 """INSERT INTO transactions
-                   (student_id, staff_id, amount, previous_balance, new_balance, status, remarks, type, payment_mode, created_at)
-                   VALUES (%s,%s,%s,%s,%s,'completed',%s,'purchase','gcash',NOW())""",
-                (student["student_id"], staff_id, amount, current_balance, new_balance, remarks_val),
+                   (student_id, customer_name, staff_id, amount, previous_balance, new_balance, status, remarks, type, payment_mode, created_at)
+                   VALUES (%s,%s,%s,%s,%s,%s,'completed',%s,'purchase','gcash',NOW())""",
+                (student["student_id"], student["full_name"], staff_id, amount, current_balance, new_balance, remarks_val),
             )
             txn_id = getattr(cursor, "lastrowid", None)
             _deduct_canteen_product_stock(cursor, cart_items)
@@ -4153,9 +4162,9 @@ def staff_qr_transaction():
         )
         cursor.execute(
             """INSERT INTO transactions
-               (student_id, staff_id, amount, previous_balance, new_balance, status, remarks, type, payment_mode, created_at)
-               VALUES (%s,%s,%s,%s,%s,'completed',%s,'purchase','wallet',NOW())""",
-            (student["student_id"], staff_id, amount, current_balance, new_balance, remarks_val),
+               (student_id, customer_name, staff_id, amount, previous_balance, new_balance, status, remarks, type, payment_mode, created_at)
+               VALUES (%s,%s,%s,%s,%s,%s,'completed',%s,'purchase','wallet',NOW())""",
+            (student["student_id"], student["full_name"], staff_id, amount, current_balance, new_balance, remarks_val),
         )
         txn_id = getattr(cursor, "lastrowid", None)
         _deduct_canteen_product_stock(cursor, cart_items)
@@ -4349,13 +4358,28 @@ def staff_calculator_sale():
         # Check if customer_name matches a registered student (by School ID, Full Name, or Email)
         matched_student = None
         if customer_name and customer_name not in ("Quick POS Sale", "Walk-in Customer", "Walk-in (Cash)", "Walk-in (GCash)"):
+            clean_lookup = customer_name.strip()
+            candidate_id = clean_lookup
+            if " — " in clean_lookup:
+                candidate_id = clean_lookup.split(" — ")[0].strip()
+            elif " - " in clean_lookup:
+                candidate_id = clean_lookup.split(" - ")[0].strip()
+
             cursor.execute(
                 """SELECT student_id, full_name, school_id, email, parent_email, balance
                    FROM students
-                   WHERE school_id=%s OR LOWER(full_name)=LOWER(%s) OR LOWER(email)=LOWER(%s)""",
-                (customer_name, customer_name, customer_name),
+                   WHERE school_id=%s OR CAST(student_id AS CHAR)=%s OR LOWER(full_name)=LOWER(%s) OR LOWER(email)=LOWER(%s)""",
+                (candidate_id, candidate_id, clean_lookup, clean_lookup),
             )
             matched_student = cursor.fetchone()
+            if not matched_student and candidate_id != clean_lookup:
+                cursor.execute(
+                    """SELECT student_id, full_name, school_id, email, parent_email, balance
+                       FROM students
+                       WHERE school_id=%s OR LOWER(full_name)=LOWER(%s)""",
+                    (clean_lookup, candidate_id),
+                )
+                matched_student = cursor.fetchone()
 
         matched_student_id = matched_student["student_id"] if matched_student else None
         resolved_customer_name = matched_student["full_name"] if matched_student else customer_name
@@ -4448,10 +4472,10 @@ def staff_record_transaction():
                     cursor.execute("UPDATE students SET balance=%s WHERE student_id=%s",
                                    (new_balance, student["student_id"]))
                     cursor.execute("""
-                        INSERT INTO transactions (student_id, staff_id, amount, previous_balance, new_balance,
+                        INSERT INTO transactions (student_id, customer_name, staff_id, amount, previous_balance, new_balance,
                                                   status, remarks, type, payment_mode, created_at)
-                        VALUES (%s,%s,%s,%s,%s,'completed',%s,'purchase','wallet',%s)
-                    """, (student["student_id"], staff_id, amount, student["balance"], new_balance,
+                        VALUES (%s,%s,%s,%s,%s,%s,'completed',%s,'purchase','wallet',%s)
+                    """, (student["student_id"], student["full_name"], staff_id, amount, student["balance"], new_balance,
                           remarks_val, now_dt))
                     txn_id = getattr(cursor, "lastrowid", None)
                     _deduct_canteen_product_stock(cursor, cart_items)
@@ -4498,10 +4522,10 @@ def staff_record_transaction():
                     cursor.execute("UPDATE students SET balance=%s WHERE student_id=%s",
                                    (new_balance, student["student_id"]))
                     cursor.execute("""
-                        INSERT INTO transactions (student_id, staff_id, amount, previous_balance, new_balance,
+                        INSERT INTO transactions (student_id, customer_name, staff_id, amount, previous_balance, new_balance,
                                                   status, remarks, type, payment_mode, created_at)
-                        VALUES (%s,%s,%s,%s,%s,'completed',%s,'purchase','wallet',%s)
-                    """, (student["student_id"], staff_id, amount, student["balance"], new_balance,
+                        VALUES (%s,%s,%s,%s,%s,%s,'completed',%s,'purchase','wallet',%s)
+                    """, (student["student_id"], student["full_name"], staff_id, amount, student["balance"], new_balance,
                           remarks_val, now_dt))
                     txn_id = getattr(cursor, "lastrowid", None)
                     _deduct_canteen_product_stock(cursor, cart_items)
@@ -4544,13 +4568,28 @@ def staff_record_transaction():
             # Check if school_id / customer_name matches a registered student so we can auto-email their receipt too!
             matched_student = None
             if school_id and school_id not in ("Walk-in Customer", "Walk-in (Cash)", "Walk-in (GCash)"):
+                clean_lookup = school_id.strip()
+                candidate_id = clean_lookup
+                if " — " in clean_lookup:
+                    candidate_id = clean_lookup.split(" — ")[0].strip()
+                elif " - " in clean_lookup:
+                    candidate_id = clean_lookup.split(" - ")[0].strip()
+
                 cursor.execute(
                     """SELECT student_id, full_name, school_id, email, parent_email, balance
                        FROM students
-                       WHERE school_id=%s OR LOWER(full_name)=LOWER(%s) OR LOWER(email)=LOWER(%s)""",
-                    (school_id, school_id, school_id),
+                       WHERE school_id=%s OR CAST(student_id AS CHAR)=%s OR LOWER(full_name)=LOWER(%s) OR LOWER(email)=LOWER(%s)""",
+                    (candidate_id, candidate_id, clean_lookup, clean_lookup),
                 )
                 matched_student = cursor.fetchone()
+                if not matched_student and candidate_id != clean_lookup:
+                    cursor.execute(
+                        """SELECT student_id, full_name, school_id, email, parent_email, balance
+                           FROM students
+                           WHERE school_id=%s OR LOWER(full_name)=LOWER(%s)""",
+                        (clean_lookup, candidate_id),
+                    )
+                    matched_student = cursor.fetchone()
 
             matched_student_id = matched_student["student_id"] if matched_student else None
             resolved_name = matched_student["full_name"] if matched_student else school_id
@@ -4678,20 +4717,7 @@ def unregistered_transactions():
     if not admin:
         return redirect(url_for("signin_admin"))
 
-    conn = get_connection()
-    cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
-
-    cursor.execute("""
-        SELECT ut.transaction_id, ut.customer_name, ut.amount, ut.payment_mode,
-               ut.status, ut.created_at, s.full_name AS staff_name
-        FROM unregistered_transactions ut
-        LEFT JOIN staff s ON ut.staff_id = s.staff_id
-        ORDER BY ut.created_at DESC
-    """)
-    rows = cursor.fetchall()
-    conn.close()
-
-    return render_template("dashboard_admin.html", unregistered_transactions=rows)
+    return redirect(url_for("dashboard_admin", section="unregistered"))
 
 
 

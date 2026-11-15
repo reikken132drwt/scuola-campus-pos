@@ -312,6 +312,14 @@ def init_sqlite_db(db_path):
         );
         """
     )
+    try:
+        conn.execute("""
+            UPDATE transactions
+            SET customer_name = (SELECT full_name FROM students WHERE students.student_id = transactions.student_id)
+            WHERE student_id IS NOT NULL AND (customer_name IS NULL OR customer_name = '' OR customer_name = 'Walk-in')
+        """)
+    except Exception:
+        pass
     conn.commit()
     conn.close()
 
@@ -363,6 +371,14 @@ def ensure_mysql_schema(conn):
             pass
         try:
             cur.execute("ALTER TABLE canteen_products ADD COLUMN stock INT DEFAULT 0")
+        except Exception:
+            pass
+        try:
+            cur.execute("""
+                UPDATE transactions
+                SET customer_name = (SELECT full_name FROM students WHERE students.student_id = transactions.student_id)
+                WHERE student_id IS NOT NULL AND (customer_name IS NULL OR customer_name = '' OR customer_name = 'Walk-in')
+            """)
         except Exception:
             pass
         conn.commit()

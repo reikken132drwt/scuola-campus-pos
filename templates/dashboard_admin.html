@@ -241,7 +241,7 @@
             type="button"
             data-target="unregisteredSection"
             data-category="Ledgers & Auditing"
-            data-title="Unregistered & Walk-In Sales"
+            data-title="Walk-In & Counter Sales"
             data-subtitle="Counter cash and GCash transactions recorded for visitors and non-registered buyers"
             onclick="switchNavSection('unregisteredSection', this)"
             class="nav-tab w-full px-3 py-2.5 rounded-xl text-left flex items-center gap-3 text-slate-700 hover:bg-slate-100/80 group"
@@ -250,8 +250,13 @@
               <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
             </div>
             <div class="min-w-0 flex-1">
-              <p class="text-xs font-bold leading-snug truncate">Unregistered Sales</p>
-              <p class="nav-subtext text-[10px] text-slate-400 truncate">Walk-in & visitor orders</p>
+              <div class="flex items-center justify-between gap-1">
+                <p class="text-xs font-bold leading-snug truncate">Walk-In & Counter Sales</p>
+                <span class="nav-count-pill px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold">
+                  {{ unregistered_transactions|length }}
+                </span>
+              </div>
+              <p class="nav-subtext text-[10px] text-slate-400 truncate">Cash &amp; GCash counter orders</p>
             </div>
           </button>
         </div>
@@ -1295,11 +1300,20 @@
             <div>
               <span class="text-[10px] font-bold uppercase tracking-wider text-purple-700">04 • Master Financial Audit Log</span>
               <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
-                <span>📑</span> Complete Transaction Ledger
+                <span>📑</span> Complete Transaction Ledger ({{ transactions|length }})
               </h3>
               <p class="text-xs text-slate-500">Audit trail of all purchases, top-ups, and balance adjustments</p>
             </div>
-            <input type="text" id="filterTxnInput" onkeyup="filterTxnTable()" placeholder="Search transactions..." class="text-xs border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-purple-400 focus:outline-none w-full sm:w-64">
+            <div class="flex flex-wrap items-center gap-2">
+              <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-bold" id="adminTxnModeFilterGroup">
+                <button type="button" onclick="setAdminTxnFilter('all', this)" class="admin-mode-pill active px-2.5 py-1 rounded-lg bg-purple-600 text-white transition">All</button>
+                <button type="button" onclick="setAdminTxnFilter('wallet', this)" class="admin-mode-pill px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 transition">💳 Wallet</button>
+                <button type="button" onclick="setAdminTxnFilter('cash', this)" class="admin-mode-pill px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 transition">💵 Cash</button>
+                <button type="button" onclick="setAdminTxnFilter('gcash', this)" class="admin-mode-pill px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 transition">📱 GCash</button>
+                <button type="button" onclick="setAdminTxnFilter('topup', this)" class="admin-mode-pill px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 transition">⚡ Top-Ups</button>
+              </div>
+              <input type="text" id="filterTxnInput" onkeyup="filterTxnTable()" placeholder="Search transactions, name, ID..." class="text-xs border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-purple-400 focus:outline-none w-full sm:w-56">
+            </div>
           </div>
 
           <div class="overflow-x-auto rounded-xl border border-slate-100 mt-4 max-h-[540px] overflow-y-auto">
@@ -1309,7 +1323,7 @@
                   <th class="px-4 py-3">Txn ID</th>
                   <th class="px-4 py-3">Student / Customer</th>
                   <th class="px-4 py-3">Amount</th>
-                  <th class="px-4 py-3">Type</th>
+                  <th class="px-4 py-3">Type &amp; Method</th>
                   <th class="px-4 py-3">Status</th>
                   <th class="px-4 py-3">Handled By</th>
                   <th class="px-4 py-3">Remarks</th>
@@ -1319,14 +1333,27 @@
               </thead>
               <tbody class="divide-y divide-slate-100">
                 {% for tx in transactions %}
-                <tr id="txn-{{ tx.transaction_id }}" class="hover:bg-purple-50/40 transition">
+                {% set tx_mode = (tx.payment_mode or 'cash')|lower %}
+                <tr id="txn-{{ tx.transaction_id }}" class="hover:bg-purple-50/40 transition" data-mode="{{ tx_mode }}" data-type="{{ (tx.type or 'purchase')|lower }}">
                   <td class="px-4 py-3 font-mono text-slate-500">#{{ tx.transaction_id }}</td>
-                  <td class="px-4 py-3 font-semibold text-slate-900">{{ tx.customer_name or tx.student_name or 'Walk-in' }}</td>
+                  <td class="px-4 py-3">
+                    <span class="font-semibold text-slate-900">{{ tx.customer_name or 'Walk-in Customer' }}</span>
+                    {% if tx.student_name %}
+                      <span class="block text-[10px] font-mono text-purple-600 font-normal">ID: {{ tx.student_name }}</span>
+                    {% endif %}
+                  </td>
                   <td class="px-4 py-3 font-extrabold text-slate-900">₱{{ '%.2f'|format(tx.amount|float) }}</td>
                   <td class="px-4 py-3">
                     <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold {{ 'bg-purple-100 text-purple-800' if tx.type == 'topup' else 'bg-slate-100 text-slate-700' }} uppercase">
                       {{ tx.type }}
                     </span>
+                    {% if tx_mode in ('gcash', 'ewallet', 'e-wallet') %}
+                      <span class="inline-block ml-1 text-[10px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded">📱 GCash</span>
+                    {% elif tx_mode == 'cash' %}
+                      <span class="inline-block ml-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">💵 Cash</span>
+                    {% elif tx_mode in ('wallet', 'cashless') %}
+                      <span class="inline-block ml-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">💳 Wallet</span>
+                    {% endif %}
                   </td>
                   <td class="px-4 py-3 status-cell">
                     {% if tx.remarks and "Reversal" in tx.remarks %}
@@ -1336,9 +1363,9 @@
                     {% endif %}
                   </td>
                   <td class="px-4 py-3 text-slate-600">{{ tx.staff_name or 'Admin' }}</td>
-                  <td class="px-4 py-3 text-slate-500 remarks-cell">{{ tx.remarks or '---' }}</td>
-                  <td class="px-4 py-3 text-slate-500">{{ tx.created_at }}</td>
-                  <td class="px-4 py-3 text-center">
+                  <td class="px-4 py-3 text-slate-500 remarks-cell max-w-[220px] truncate" title="{{ tx.remarks or '---' }}">{{ tx.remarks or '---' }}</td>
+                  <td class="px-4 py-3 text-slate-500 whitespace-nowrap">{{ tx.created_at }}</td>
+                  <td class="px-4 py-3 text-center whitespace-nowrap">
                     {% if tx.type == 'topup' and not (tx.remarks and "Reversal" in tx.remarks) %}
                       <button onclick="reverseTopup({{ tx.transaction_id }})" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[11px] font-bold transition">
                         Undo Top-Up
@@ -1360,26 +1387,30 @@
       </div>
 
       <!-- ========================================================================= -->
-      <!-- LEVEL 04-B SECTION: UNREGISTERED TRANSACTIONS (#unregisteredSection)     -->
+      <!-- LEVEL 04-B SECTION: WALK-IN & COUNTER SALES (#unregisteredSection)        -->
       <!-- ========================================================================= -->
       <div id="unregisteredSection" class="admin-section hidden space-y-4">
         <div class="bg-white rounded-2xl ring-1 ring-purple-100 shadow-md p-5 sm:p-6">
-          <div class="border-b border-slate-100 pb-3">
-            <span class="text-[10px] font-bold uppercase tracking-wider text-purple-700">04 • Direct POS Counter Logs</span>
-            <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
-              <span>👥</span> Walk-In & Unregistered Sales
-            </h3>
-            <p class="text-xs text-slate-500">All non-registered transactions logged by school staff</p>
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-purple-700">04 • Counter POS Logs</span>
+              <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                <span>💵</span> Walk-In &amp; Counter Sales ({{ unregistered_transactions|length }})
+              </h3>
+              <p class="text-xs text-slate-500">All canteen counter purchases paid via Cash or GCash</p>
+            </div>
+            <input type="text" id="filterUnregInput" onkeyup="filterUnregTable()" placeholder="Search counter sales..." class="text-xs border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-purple-400 focus:outline-none w-full sm:w-64">
           </div>
 
-          <div class="overflow-x-auto rounded-xl border border-slate-100 mt-4">
-            <table class="w-full text-left text-xs">
-              <thead class="bg-purple-50 text-purple-900 font-bold">
+          <div class="overflow-x-auto rounded-xl border border-slate-100 mt-4 max-h-[540px] overflow-y-auto">
+            <table id="unregisteredTable" class="w-full text-left text-xs">
+              <thead class="bg-purple-50 text-purple-900 font-bold sticky top-0">
                 <tr>
                   <th class="px-4 py-3">Txn ID</th>
-                  <th class="px-4 py-3">Customer Reference</th>
+                  <th class="px-4 py-3">Customer / Student</th>
                   <th class="px-4 py-3">Amount</th>
                   <th class="px-4 py-3">Payment Tender</th>
+                  <th class="px-4 py-3">Items / Remarks</th>
                   <th class="px-4 py-3">Status</th>
                   <th class="px-4 py-3">Recorded At</th>
                   <th class="px-4 py-3">Cashier Staff</th>
@@ -1389,20 +1420,39 @@
                 {% for u in unregistered_transactions %}
                 <tr class="hover:bg-purple-50/40 transition">
                   <td class="px-4 py-3 font-mono text-slate-500">#{{ u.transaction_id }}</td>
-                  <td class="px-4 py-3 font-bold text-slate-900">{{ u.customer_name }}</td>
+                  <td class="px-4 py-3">
+                    <span class="font-bold text-slate-900">{{ u.customer_name or 'Walk-in Customer' }}</span>
+                    {% if u.school_id %}
+                      <span class="block text-[10px] font-mono text-purple-600">ID: {{ u.school_id }} (Enrolled)</span>
+                    {% else %}
+                      <span class="block text-[10px] text-slate-400">Direct / Walk-In</span>
+                    {% endif %}
+                  </td>
                   <td class="px-4 py-3 font-extrabold text-slate-900">₱{{ '%.2f'|format(u.amount|float) }}</td>
-                  <td class="px-4 py-3 text-slate-600 capitalize">{{ u.payment_mode or 'Cash' }}</td>
+                  <td class="px-4 py-3">
+                    {% set upm = (u.payment_mode or 'cash')|lower %}
+                    {% if upm in ('gcash', 'ewallet', 'e-wallet') %}
+                      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800">
+                        📱 GCash
+                      </span>
+                    {% else %}
+                      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                        💵 Cash
+                      </span>
+                    {% endif %}
+                  </td>
+                  <td class="px-4 py-3 text-slate-600 max-w-[220px] truncate" title="{{ u.remarks or '---' }}">{{ u.remarks or '---' }}</td>
                   <td class="px-4 py-3">
                     <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
                       {{ u.status }}
                     </span>
                   </td>
-                  <td class="px-4 py-3 text-slate-500">{{ u.created_at }}</td>
-                  <td class="px-4 py-3 text-slate-600">{{ u.staff_name }}</td>
+                  <td class="px-4 py-3 text-slate-500 whitespace-nowrap">{{ u.created_at }}</td>
+                  <td class="px-4 py-3 text-slate-600">{{ u.staff_name or 'Canteen Cashier' }}</td>
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="7" class="px-4 py-8 text-center text-slate-400">No unregistered sales logged.</td>
+                  <td colspan="8" class="px-4 py-8 text-center text-slate-400">No counter cash/GCash sales recorded yet.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -2727,10 +2777,48 @@
       });
     }
 
+    let activeAdminTxnFilter = 'all';
+
+    function setAdminTxnFilter(mode, btn) {
+      activeAdminTxnFilter = mode;
+      document.querySelectorAll('#adminTxnModeFilterGroup .admin-mode-pill').forEach(b => {
+        b.classList.remove('active', 'bg-purple-600', 'text-white');
+        b.classList.add('text-slate-600');
+      });
+      if (btn) {
+        btn.classList.add('active', 'bg-purple-600', 'text-white');
+        btn.classList.remove('text-slate-600');
+      }
+      filterTxnTable();
+    }
+
     function filterTxnTable() {
-      const q = (document.getElementById("filterTxnInput").value || "").toLowerCase();
+      const q = (document.getElementById("filterTxnInput").value || "").toLowerCase().trim();
       document.querySelectorAll("#transactionsTable tbody tr").forEach(row => {
-        row.style.display = row.textContent.toLowerCase().includes(q) ? "" : "none";
+        const rowText = (row.textContent || "").toLowerCase();
+        const rowMode = (row.dataset.mode || "").toLowerCase();
+        const rowType = (row.dataset.type || "").toLowerCase();
+        let matchesMode = true;
+        if (activeAdminTxnFilter === 'wallet') {
+          matchesMode = (rowMode === 'wallet' || rowMode === 'cashless');
+        } else if (activeAdminTxnFilter === 'cash') {
+          matchesMode = (rowMode === 'cash');
+        } else if (activeAdminTxnFilter === 'gcash') {
+          matchesMode = (rowMode === 'gcash' || rowMode === 'ewallet' || rowMode === 'e-wallet');
+        } else if (activeAdminTxnFilter === 'topup') {
+          matchesMode = (rowType === 'topup');
+        }
+
+        const matchesQuery = (!q || rowText.includes(q));
+        row.style.display = (matchesMode && matchesQuery) ? "" : "none";
+      });
+    }
+
+    function filterUnregTable() {
+      const q = (document.getElementById("filterUnregInput").value || "").toLowerCase().trim();
+      document.querySelectorAll("#unregisteredTable tbody tr").forEach(row => {
+        const rowText = (row.textContent || "").toLowerCase();
+        row.style.display = (!q || rowText.includes(q)) ? "" : "none";
       });
     }
 
@@ -3205,6 +3293,23 @@
     // Initialize executive overview charts and desktop helper listeners
     document.addEventListener("DOMContentLoaded", function() {
       initCharts();
+
+      // Deep link to section via ?section=...
+      const urlParams = new URLSearchParams(window.location.search);
+      const targetSec = urlParams.get("section");
+      if (targetSec) {
+        if (targetSec === "registered" || targetSec === "students") {
+          switchNavSection("studentsSection");
+        } else if (targetSec === "unregistered" || targetSec === "walkin" || targetSec === "counter") {
+          switchNavSection("unregisteredSection");
+        } else if (targetSec === "transactions" || targetSec === "ledger") {
+          switchNavSection("transactionsSection");
+        } else if (targetSec === "topups" || targetSec === "pending") {
+          switchNavSection("topupsSection");
+        } else if (document.getElementById(targetSec)) {
+          switchNavSection(targetSec);
+        }
+      }
 
       // Desktop Clipboard Paste (Ctrl+V) anywhere on screen
       window.addEventListener("paste", async function(e) {

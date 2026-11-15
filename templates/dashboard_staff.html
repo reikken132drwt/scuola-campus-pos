@@ -1356,9 +1356,12 @@
           <input
             type="text"
             id="directCustomerName"
-            placeholder="e.g. Walk-in, Juan Dela Cruz, Visitor"
+            list="directStudentDatalist"
+            placeholder="e.g. 2026-0001, Juan Dela Cruz, or Walk-in"
             class="w-full text-xs text-slate-800 border border-slate-300 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-purple-400 focus:outline-none"
           >
+          <datalist id="directStudentDatalist"></datalist>
+          <p class="text-[10px] text-slate-400 mt-1">Start typing to choose an enrolled student, or type a custom customer name.</p>
         </div>
 
         <button
@@ -3400,6 +3403,10 @@
           if (data.success && data.students) {
             cachedStudents = data.students;
             renderStudentDirectory(cachedStudents);
+            const dl = document.getElementById("directStudentDatalist");
+            if (dl) {
+              dl.innerHTML = cachedStudents.map(s => `<option value="${s.school_id} — ${s.full_name}"></option>`).join("");
+            }
           } else {
             container.innerHTML = `<p class="text-xs text-slate-400 p-4 text-center">No students registered yet.</p>`;
           }
@@ -3738,7 +3745,14 @@
       }
 
       const customerInput = document.getElementById("directCustomerName");
-      const customerName = (customerInput && customerInput.value.trim()) || (mode === "gcash" ? "Walk-in (GCash)" : "Walk-in (Cash)");
+      let rawCustomer = (customerInput && customerInput.value.trim()) || "";
+      let studentIdentifier = rawCustomer;
+      if (rawCustomer.includes(" — ")) {
+        studentIdentifier = rawCustomer.split(" — ")[0].trim();
+      } else if (rawCustomer.includes(" - ")) {
+        studentIdentifier = rawCustomer.split(" - ")[0].trim();
+      }
+      const customerName = studentIdentifier || (mode === "gcash" ? "Walk-in (GCash)" : "Walk-in (Cash)");
 
       const gcashRefInput = document.getElementById("directGcashRef");
       const gcashRef = (gcashRefInput && gcashRefInput.value.trim()) || "";
