@@ -49,17 +49,43 @@ app.config["PERMANENT_SESSION_LIFETIME"] = datetime.timedelta(days=30)
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 # ✅ Configure SQLAlchemy to connect to MySQL database (with local SQLite fallback)
+from urllib.parse import urlparse, unquote
+
 _SQLITE_FALLBACK_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "school_system_local.db")
+_RAW_DB_URL = os.environ.get("AIVEN_DATABASE_URL") or os.environ.get("DATABASE_URL")
+
 _MYSQL_USER = os.environ.get('MYSQL_USER', 'school_user')
 _MYSQL_PASSWORD = os.environ.get('MYSQL_PASSWORD', 'qrcode12345!')
 _MYSQL_HOST = os.environ.get('MYSQL_HOST', 'localhost')
 _MYSQL_PORT = int(os.environ.get('MYSQL_PORT', 3306))
 _MYSQL_DB = os.environ.get('MYSQL_DB', 'school_system')
-_MYSQL_URI = f"mysql+pymysql://{_MYSQL_USER}:{_MYSQL_PASSWORD}@{_MYSQL_HOST}:{_MYSQL_PORT}/{_MYSQL_DB}?charset=utf8mb4"
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
-    "DATABASE_URL",
-    _MYSQL_URI
-)
+_MYSQL_SSL = os.environ.get('MYSQL_SSL', '0') == '1'
+
+if _RAW_DB_URL and ("mysql" in _RAW_DB_URL or "aivencloud" in _RAW_DB_URL):
+    try:
+        _parsed_url = urlparse(_RAW_DB_URL)
+        if _parsed_url.username:
+            _MYSQL_USER = unquote(_parsed_url.username)
+        if _parsed_url.password:
+            _MYSQL_PASSWORD = unquote(_parsed_url.password)
+        if _parsed_url.hostname:
+            _MYSQL_HOST = _parsed_url.hostname
+        if _parsed_url.port:
+            _MYSQL_PORT = int(_parsed_url.port)
+        _url_path = _parsed_url.path.lstrip("/")
+        if _url_path:
+            _MYSQL_DB = _url_path
+        if "ssl" in _RAW_DB_URL.lower() or _MYSQL_HOST not in ("localhost", "127.0.0.1"):
+            _MYSQL_SSL = True
+    except Exception:
+        pass
+
+if _MYSQL_HOST not in ("localhost", "127.0.0.1"):
+    _MYSQL_SSL = True
+
+_ssl_arg = "&ssl_mode=REQUIRED" if _MYSQL_SSL else ""
+_MYSQL_URI = f"mysql+pymysql://{_MYSQL_USER}:{_MYSQL_PASSWORD}@{_MYSQL_HOST}:{_MYSQL_PORT}/{_MYSQL_DB}?charset=utf8mb4{_ssl_arg}"
+app.config['SQLALCHEMY_DATABASE_URI'] = _MYSQL_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # ✅ Initialize db with app
@@ -68,11 +94,12 @@ db.init_app(app)
 # ✅ Import models AFTER db is initialized
 from models import Student, Transaction
 
-app.config['MYSQL_USER'] = os.environ.get('MYSQL_USER', 'school_user')
-app.config['MYSQL_PASSWORD'] = os.environ.get('MYSQL_PASSWORD', 'qrcode12345!')
-app.config['MYSQL_DB'] = os.environ.get('MYSQL_DB', 'school_system')
-app.config['MYSQL_HOST'] = os.environ.get('MYSQL_HOST', 'localhost')
-app.config['MYSQL_PORT'] = int(os.environ.get('MYSQL_PORT', 3306))
+app.config['MYSQL_USER'] = _MYSQL_USER
+app.config['MYSQL_PASSWORD'] = _MYSQL_PASSWORD
+app.config['MYSQL_DB'] = _MYSQL_DB
+app.config['MYSQL_HOST'] = _MYSQL_HOST
+app.config['MYSQL_PORT'] = _MYSQL_PORT
+app.config['MYSQL_SSL'] = _MYSQL_SSL
 
 try:
     from flask_mysqldb import MySQL
@@ -572,24 +599,31 @@ def get_connection():
     global _SQLITE_INITIALIZED, _ACTIVE_DB_TYPE, _ACTIVE_PYMYSQL_PORT, _LAST_MYSQL_CHECK
     now = time.time()
 
-    # 1. Primary: Direct PyMySQL connection to local MySQL (port 3306 / MySQL 8.0)
+    # 1. Primary: Direct PyMySQL connection to MySQL (Local or Cloud Aiven)
     if _ACTIVE_DB_TYPE != "sqlite" or (now - _LAST_MYSQL_CHECK > _MYSQL_CHECK_COOLDOWN):
         try:
             import pymysql
-            ports_to_try = [_ACTIVE_PYMYSQL_PORT] if _ACTIVE_PYMYSQL_PORT else [app.config.get("MYSQL_PORT", 3306), 3306, 3307]
+            target_host = app.config.get("MYSQL_HOST", "localhost")
+            target_port = int(app.config.get("MYSQL_PORT", 3306))
+            is_remote = target_host not in ("localhost", "127.0.0.1")
+            is_ssl = app.config.get("MYSQL_SSL", False) or is_remote
+            ssl_kwargs = {"ssl": {"ssl_mode": "REQUIRED"}} if is_ssl else {}
+
+            ports_to_try = [target_port] if is_remote else ([_ACTIVE_PYMYSQL_PORT] if _ACTIVE_PYMYSQL_PORT else [target_port, 3306, 3307])
             for port in set(ports_to_try):
                 if not port:
                     continue
                 try:
                     conn = pymysql.connect(
-                        host=app.config.get("MYSQL_HOST", "localhost"),
+                        host=target_host,
                         port=port,
                         user=app.config.get("MYSQL_USER", "school_user"),
                         password=app.config.get("MYSQL_PASSWORD", "qrcode12345!"),
                         database=app.config.get("MYSQL_DB", "school_system"),
                         autocommit=True,
                         charset="utf8mb4",
-                        connect_timeout=1.0,
+                        connect_timeout=8.0 if is_remote else 1.5,
+                        **ssl_kwargs
                     )
                     ensure_mysql_schema(conn)
                     _ACTIVE_DB_TYPE = "pymysql"

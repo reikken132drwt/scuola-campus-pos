@@ -328,7 +328,7 @@ _MYSQL_SCHEMA_CHECKED = False
 
 
 def ensure_mysql_schema(conn):
-    """Ensure otps table exists and password columns are wide enough in MySQL."""
+    """Ensure core tables exist and password columns are wide enough in MySQL."""
     global _MYSQL_SCHEMA_CHECKED
     if _MYSQL_SCHEMA_CHECKED:
         return
@@ -337,13 +337,114 @@ def ensure_mysql_schema(conn):
         cur = conn.cursor()
         cur.execute(
             """
+            CREATE TABLE IF NOT EXISTS admins (
+                admin_id INT AUTO_INCREMENT PRIMARY KEY,
+                full_name VARCHAR(100) NOT NULL,
+                contact_number VARCHAR(20),
+                email VARCHAR(120) UNIQUE NOT NULL,
+                password VARCHAR(255) NOT NULL,
+                security_q1 VARCHAR(255),
+                security_a1 VARCHAR(255),
+                security_q2 VARCHAR(255),
+                security_a2 VARCHAR(255),
+                security_q3 VARCHAR(255),
+                security_a3 VARCHAR(255),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS staff (
+                staff_id INT AUTO_INCREMENT PRIMARY KEY,
+                full_name VARCHAR(100) NOT NULL,
+                contact_number VARCHAR(20),
+                email VARCHAR(120) UNIQUE NOT NULL,
+                password VARCHAR(255) NOT NULL,
+                staff_qr VARCHAR(255),
+                security_q1 VARCHAR(255),
+                security_a1 VARCHAR(255),
+                security_q2 VARCHAR(255),
+                security_a2 VARCHAR(255),
+                security_q3 VARCHAR(255),
+                security_a3 VARCHAR(255),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS students (
+                student_id INT AUTO_INCREMENT PRIMARY KEY,
+                school_id VARCHAR(50) UNIQUE NOT NULL,
+                full_name VARCHAR(100) NOT NULL,
+                email VARCHAR(120) UNIQUE NOT NULL,
+                parent_email VARCHAR(120),
+                contact_number VARCHAR(20),
+                grade_level VARCHAR(20),
+                strand VARCHAR(50),
+                guardian_name VARCHAR(100),
+                pin VARCHAR(255) DEFAULT '1234',
+                password VARCHAR(255) NOT NULL,
+                security_q1 VARCHAR(255),
+                security_a1 VARCHAR(255),
+                security_q2 VARCHAR(255),
+                security_a2 VARCHAR(255),
+                security_q3 VARCHAR(255),
+                security_a3 VARCHAR(255),
+                balance DECIMAL(10, 2) DEFAULT 0.00,
+                qr_code VARCHAR(255),
+                profile_pic VARCHAR(255) DEFAULT NULL,
+                status VARCHAR(20) DEFAULT 'active',
+                last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS transactions (
+                transaction_id INT AUTO_INCREMENT PRIMARY KEY,
+                student_id INT,
+                staff_id INT,
+                admin_id INT,
+                type ENUM('purchase', 'topup', 'refund') NOT NULL,
+                amount DECIMAL(10, 2) NOT NULL,
+                previous_balance DECIMAL(10, 2) DEFAULT 0.00,
+                new_balance DECIMAL(10, 2) DEFAULT 0.00,
+                payment_mode VARCHAR(20) DEFAULT 'wallet',
+                customer_name VARCHAR(100) DEFAULT NULL,
+                remarks VARCHAR(255),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE SET NULL,
+                FOREIGN KEY (staff_id) REFERENCES staff(staff_id) ON DELETE SET NULL,
+                FOREIGN KEY (admin_id) REFERENCES admins(admin_id) ON DELETE SET NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS topups (
+                topup_id INT AUTO_INCREMENT PRIMARY KEY,
+                student_id INT NOT NULL,
+                amount DECIMAL(10, 2) NOT NULL,
+                payment_mode VARCHAR(50) DEFAULT 'Cash',
+                reference_number VARCHAR(100),
+                status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS otps (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 email VARCHAR(120) NOT NULL,
                 otp_code VARCHAR(20) NOT NULL,
                 expires_at DATETIME NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
         cur.execute(
@@ -356,8 +457,9 @@ def ensure_mysql_schema(conn):
                 price NUMERIC(10, 2) NOT NULL,
                 image_path VARCHAR(255),
                 icon VARCHAR(20) DEFAULT '🍽️',
+                stock INT DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
         for tbl in ("students", "admins", "staff"):
