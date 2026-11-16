@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS students (
     security_a3 VARCHAR(255),
     balance DECIMAL(10, 2) DEFAULT 0.00,
     qr_code VARCHAR(255),
+    profile_pic VARCHAR(255) DEFAULT NULL,
     status VARCHAR(20) DEFAULT 'active',
     last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
