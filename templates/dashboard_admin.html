@@ -1356,7 +1356,7 @@
                     {% endif %}
                   </td>
                   <td class="px-4 py-3 status-cell">
-                    {% if tx.remarks and "Reversal" in tx.remarks %}
+                    {% if (tx.remarks and ("Reversal" in tx.remarks or "Reversed" in tx.remarks)) or (tx.amount|float < 0) %}
                       <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-100 text-rose-700">Reversed</span>
                     {% else %}
                       <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">{{ tx.status }}</span>
@@ -1365,11 +1365,13 @@
                   <td class="px-4 py-3 text-slate-600">{{ tx.staff_name or 'Admin' }}</td>
                   <td class="px-4 py-3 text-slate-500 remarks-cell max-w-[220px] truncate" title="{{ tx.remarks or '---' }}">{{ tx.remarks or '---' }}</td>
                   <td class="px-4 py-3 text-slate-500 whitespace-nowrap">{{ tx.created_at }}</td>
-                  <td class="px-4 py-3 text-center whitespace-nowrap">
-                    {% if tx.type == 'topup' and not (tx.remarks and "Reversal" in tx.remarks) %}
-                      <button onclick="reverseTopup({{ tx.transaction_id }})" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[11px] font-bold transition">
+                  <td class="px-4 py-3 text-center whitespace-nowrap action-cell">
+                    {% if tx.type == 'topup' and (tx.amount|float > 0) and not (tx.remarks and ("Reversal" in tx.remarks or "Reversed" in tx.remarks)) %}
+                      <button onclick="reverseTopup({{ tx.transaction_id }}, this)" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[11px] font-bold transition">
                         Undo Top-Up
                       </button>
+                    {% elif tx.type == 'topup' %}
+                      <span class="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-400 text-[10px] font-semibold">Undone</span>
                     {% else %}
                       <span class="text-slate-400 text-[11px]">---</span>
                     {% endif %}
@@ -2723,8 +2725,13 @@
     setInterval(syncAdminData, 3500);
 
     // --- Reverse Top-Up ---
-    function reverseTopup(id) {
+    function reverseTopup(id, btnEl) {
       if (!confirm("Reverse this top-up? The amount will be deducted from the student's balance.")) return;
+      if (btnEl) {
+        btnEl.disabled = true;
+        btnEl.classList.add("opacity-60", "cursor-not-allowed");
+        btnEl.textContent = "Reversing...";
+      }
       fetch(`/reverse_topup/${id}`, {
         method: 'POST',
         headers: { 'Accept': 'application/json' }
@@ -2732,7 +2739,7 @@
       .then(res => res.json())
       .then(data => {
         if (data.success) {
-          showToast("Top-up reversed successfully 🔄", "success");
+          showToast(data.message || "Top-up reversed successfully 🔄", "success");
           const row = document.getElementById(`txn-${id}`);
           if (row) {
             const statusCell = row.querySelector('.status-cell');
@@ -2740,16 +2747,58 @@
               statusCell.innerHTML = `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-100 text-rose-700">Reversed</span>`;
             }
             const remarksCell = row.querySelector('.remarks-cell');
-            if (remarksCell) remarksCell.textContent = "Reversal of mistaken top-up";
+            if (remarksCell) {
+              const curText = (remarksCell.textContent || "").trim();
+              const nextRemarks = curText && curText !== "---" ? `${curText} [Reversal Applied]` : "Top-Up [Reversal Applied]";
+              remarksCell.textContent = nextRemarks;
+              remarksCell.title = nextRemarks;
+            }
+            const actionCell = row.querySelector('.action-cell');
+            if (actionCell) {
+              actionCell.innerHTML = `<span class="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-400 text-[10px] font-semibold">Undone</span>`;
+            }
             row.style.backgroundColor = "#fef3c7";
             setTimeout(() => row.style.backgroundColor = "", 1500);
           }
+          if (data.school_id && data.new_balance !== undefined) {
+            const formattedBal = parseFloat(data.new_balance).toFixed(2);
+            document.querySelectorAll(`tr[data-school-id="${data.school_id}"] .student-bal-cell`).forEach(cell => {
+              cell.textContent = `₱${formattedBal}`;
+            });
+            const dropdown = document.getElementById('studentSelectDropdown');
+            if (dropdown) {
+              const opt = dropdown.querySelector(`option[value="${data.school_id}"]`);
+              if (opt) {
+                const sName = opt.getAttribute('data-name') || data.school_id;
+                opt.setAttribute('data-balance', formattedBal);
+                opt.textContent = `${sName} (${data.school_id}) — ₱${formattedBal}`;
+              }
+            }
+            const selectedId = document.getElementById('studentId')?.innerText.trim();
+            if (selectedId && selectedId === String(data.school_id)) {
+              const curBalEl = document.getElementById('currentBalance');
+              if (curBalEl) curBalEl.innerText = formattedBal;
+              if (typeof updateBalancePreview === 'function') updateBalancePreview();
+            }
+          }
           syncAdminData();
         } else {
+          if (btnEl) {
+            btnEl.disabled = false;
+            btnEl.classList.remove("opacity-60", "cursor-not-allowed");
+            btnEl.textContent = "Undo Top-Up";
+          }
           showToast(data.message || "Reversal failed ❌", "error");
         }
       })
-      .catch(() => showToast("Error reversing transaction", "error"));
+      .catch(() => {
+        if (btnEl) {
+          btnEl.disabled = false;
+          btnEl.classList.remove("opacity-60", "cursor-not-allowed");
+          btnEl.textContent = "Undo Top-Up";
+        }
+        showToast("Error reversing transaction", "error");
+      });
     }
 
     // --- Proof Modal Viewer ---

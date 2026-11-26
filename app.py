@@ -3083,30 +3083,42 @@ def dashboard_admin():
 # Manual Top-Up
 @app.route('/manual_topup', methods=['POST'])
 def manual_topup():
-    data = request.get_json()
+    admin = _get_logged_in_admin()
+    if not admin:
+        return jsonify(success=False, message="Unauthorized"), 403
+
+    data = request.get_json() or {}
     student_id = data.get("student_id")   # school_id from frontend
-    amount = float(data.get("amount", 0))
+    try:
+        amount = Decimal(str(data.get("amount", 0)))
+    except Exception:
+        return jsonify(success=False, message="Invalid top-up amount."), 400
+
+    if not student_id or amount <= 0:
+        return jsonify(success=False, message="Please provide a valid student and positive amount."), 400
 
     conn = get_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
 
-    # Update balance
-    cursor.execute("UPDATE students SET balance = balance + %s WHERE school_id=%s", (amount, student_id))
+    cursor.execute("SELECT student_id, balance FROM students WHERE school_id=%s", (student_id,))
+    student = cursor.fetchone()
+    if not student:
+        conn.close()
+        return jsonify(success=False, message="Student not found."), 404
 
-    # Insert transaction (manual top-up → payment_mode = 'cash')
+    prev_bal = Decimal(str(student["balance"] if student.get("balance") is not None else "0.00"))
+    new_bal = prev_bal + amount
+
+    cursor.execute("UPDATE students SET balance = %s WHERE student_id=%s", (new_bal, student["student_id"]))
+
     cursor.execute("""
-        INSERT INTO transactions (student_id, type, amount, payment_mode, status, remarks, created_at, admin_id)
-        VALUES ((SELECT student_id FROM students WHERE school_id=%s), 'topup', %s, 'cash', 'completed', 'Manual top-up', NOW(), %s)
-    """, (student_id, amount, session.get("admin_id")))
-
-    # Fetch updated balance
-    cursor.execute("SELECT balance FROM students WHERE school_id=%s", (student_id,))
-    bal_row = cursor.fetchone()
-    new_bal = float(bal_row[0]) if bal_row and bal_row[0] is not None else 0.0
+        INSERT INTO transactions (student_id, type, amount, previous_balance, new_balance, payment_mode, status, remarks, created_at, admin_id)
+        VALUES (%s, 'topup', %s, %s, %s, 'cash', 'completed', 'Manual top-up', NOW(), %s)
+    """, (student["student_id"], amount, prev_bal, new_bal, admin.get("admin_id")))
 
     conn.commit()
     conn.close()
-    return jsonify(success=True, message="Manual top-up successful", new_balance=new_bal)
+    return jsonify(success=True, message="Manual top-up successful", new_balance=float(new_bal))
 
 
 
@@ -3298,9 +3310,9 @@ def reverse_topup(transaction_id):
     conn = get_connection()
     cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
 
-    # 🔹 Get the original transaction
+    # 1. Get the original top-up transaction
     cursor.execute("""
-        SELECT student_id, amount, new_balance, payment_mode
+        SELECT transaction_id, student_id, amount, new_balance, payment_mode, status, remarks
         FROM transactions
         WHERE transaction_id=%s AND type='topup' AND status='completed'
     """, (transaction_id,))
@@ -3308,42 +3320,71 @@ def reverse_topup(transaction_id):
 
     if not original:
         conn.close()
-        return jsonify({"success": False, "message": "Transaction not found"}), 404
+        return jsonify({"success": False, "message": "Top-up transaction not found."}), 404
+
+    orig_remarks = str(original.get("remarks") or "").strip()
+    amount = Decimal(str(original.get("amount") or "0.00"))
+
+    # 2. Prevent reversing an already-reversed top-up or a negative reversal entry
+    if amount <= Decimal("0.00") or "reversal" in orig_remarks.lower() or "reversed" in orig_remarks.lower():
+        conn.close()
+        return jsonify({"success": False, "message": "This top-up has already been reversed."}), 400
 
     student_id = original["student_id"]
-    amount = Decimal(original["amount"])
 
-    # 🔹 If new_balance is NULL, fetch current balance from students table
-    if original["new_balance"] is None:
-        cursor.execute("SELECT balance FROM students WHERE student_id=%s", (student_id,))
-        student = cursor.fetchone()
-        prev_balance = Decimal(student["balance"]) if student and student["balance"] is not None else Decimal("0.00")
-    else:
-        prev_balance = Decimal(original["new_balance"])
+    # 3. Always query the student's CURRENT LIVE balance from the students table
+    cursor.execute("SELECT student_id, school_id, full_name, balance FROM students WHERE student_id=%s", (student_id,))
+    student = cursor.fetchone()
+    if not student:
+        conn.close()
+        return jsonify({"success": False, "message": "Student account not found."}), 404
 
-    new_balance = prev_balance - amount
+    current_balance = Decimal(str(student["balance"] if student.get("balance") is not None else "0.00"))
 
-    # 🔹 Insert reversal transaction
+    # 4. Guard against insufficient balance (when student already spent the top-up funds)
+    if current_balance < amount:
+        conn.close()
+        return jsonify({
+            "success": False,
+            "message": f"Insufficient balance to undo this top-up. {student.get('full_name') or 'Student'} only has ₱{current_balance:.2f} available, which is less than the ₱{amount:.2f} top-up amount."
+        }), 400
+
+    new_balance = current_balance - amount
+
+    # 5. Mark the original transaction's remarks so it cannot be reversed a second time
+    updated_orig_remarks = f"{orig_remarks} [Reversal Applied]" if orig_remarks else "Top-Up [Reversal Applied]"
+    cursor.execute(
+        "UPDATE transactions SET remarks=%s WHERE transaction_id=%s",
+        (updated_orig_remarks, transaction_id)
+    )
+
+    # 6. Insert reversal transaction into audit ledger
     cursor.execute("""
         INSERT INTO transactions (student_id, admin_id, amount, previous_balance, new_balance,
                                   status, remarks, created_at, type, payment_mode)
-        VALUES (%s,%s,%s,%s,%s,'completed','Reversal of mistaken top-up',NOW(),'topup',%s)
+        VALUES (%s,%s,%s,%s,%s,'completed',%s,NOW(),'topup',%s)
     """, (
         student_id,
         admin.get("admin_id"),
-        -amount,              # negative amount for reversal
-        prev_balance,
+        -amount,
+        current_balance,
         new_balance,
+        f"Reversal of mistaken top-up (Txn #{transaction_id})",
         original["payment_mode"]
     ))
 
-    # 🔹 Update student balance
+    # 7. Update live student balance
     cursor.execute("UPDATE students SET balance=%s WHERE student_id=%s", (new_balance, student_id))
 
     conn.commit()
     conn.close()
 
-    return jsonify({"success": True, "new_balance": float(new_balance)})
+    return jsonify({
+        "success": True,
+        "message": f"Top-up of ₱{amount:.2f} reversed. New student balance: ₱{new_balance:.2f}",
+        "new_balance": float(new_balance),
+        "school_id": student.get("school_id")
+    })
 
 
 
