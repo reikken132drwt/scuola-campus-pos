@@ -1358,6 +1358,11 @@
           } catch(e) {}
         } else if (currentBal !== lastStudentBalance) {
           if (balEl) balEl.textContent = "₱" + currentBal.toFixed(2);
+          if (currentBal < lastStudentBalance) {
+            const spent = lastStudentBalance - currentBal;
+            showNotification(`💳 Canteen purchase complete: −₱${spent.toFixed(2)}`, "info");
+            if (currentTab === "myqr") refreshQr(false);
+          }
         }
 
         lastStudentBalance = currentBal;

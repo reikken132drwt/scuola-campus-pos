@@ -3317,20 +3317,23 @@
             showToast(`❌ Insufficient Balance! ${data.full_name} only has ₱${bal.toFixed(2)} (Short by ₱${shortfall.toFixed(2)})`, "error");
           }
         } else {
+          scannedStudentQrData = null;
           playInsufficientAlertBeep();
+          const errTitle = data.expired_qr ? "❌ Expired or Regenerated Dynamic QR" : "❌ Unrecognized Student QR";
+          const errMsg = data.message || "No student record found for this QR code.";
           box.className = "mt-4 p-4 bg-rose-50 rounded-2xl border border-rose-200 text-rose-800 text-xs";
           box.innerHTML = `
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between gap-2">
               <div>
-                <div class="font-bold text-sm">❌ Unrecognized Student QR</div>
-                <div class="text-xs text-rose-600 mt-0.5">${data.message || 'No student record found for this QR code.'}</div>
+                <div class="font-bold text-sm">${errTitle}</div>
+                <div class="text-xs text-rose-600 mt-0.5">${errMsg}</div>
               </div>
-              <button type="button" onclick="rescanStudentQr()" class="px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold text-xs rounded-xl transition">🔄 Try Again</button>
+              <button type="button" onclick="rescanStudentQr()" class="px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold text-xs rounded-xl transition shrink-0">🔄 Try Again</button>
             </div>
-            <span class="hidden" id="qr-result">${decodedText}</span>
+            <span class="hidden" id="qr-result">Waiting for scan...</span>
           `;
-          if (statusEl) statusEl.textContent = "❌ QR not found in database.";
-          showToast("❌ Unrecognized Student QR Code!", "error");
+          if (statusEl) statusEl.innerHTML = `<span class="text-rose-600 font-bold">${errTitle}: ${errMsg}</span>`;
+          showToast(errMsg, "error");
         }
       })
       .catch(() => {

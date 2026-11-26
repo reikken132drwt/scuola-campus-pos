@@ -2462,8 +2462,21 @@ def generate_qr():
         resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         return resp
 
-    # Add timestamp to make QR unique each time (rotates for anti-theft dynamic token)
-    unique_data = f"{student_id}-{int(time.time())}"
+    # Add timestamp + unique nonce to make QR single-use and overwrite any previously active token
+    now_ts = int(time.time())
+    token_nonce = uuid.uuid4().hex[:8]
+    token = f"{now_ts}-{token_nonce}"
+    expires_at = now_ts + 35  # 30s student rotation cycle + 5s network grace
+    unique_data = f"{student_id}-{token}"
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE students SET dynamic_qr_token=%s, dynamic_qr_expires_at=%s WHERE student_id=%s",
+        (token, expires_at, student_id),
+    )
+    conn.commit()
+    conn.close()
 
     qr = qrcode.QRCode(
         version=1,
@@ -3816,6 +3829,86 @@ def staff_delete_product(product_id):
         return jsonify({"success": False, "message": str(e)})
 
 
+def _resolve_and_validate_student_qr(cursor, raw_qr):
+    """
+    Resolves a student from a scanned QR code or School ID string.
+    Returns (student_dict, error_message, is_dynamic_qr).
+    - Fixed QR / direct School ID lookup (no hyphen, or matches school_id/qr_code directly):
+      returns (student, None, False).
+    - Dynamic QR ("<student_id>-<token>"):
+      Validates that <token> equals students.dynamic_qr_token AND time.time() <= students.dynamic_qr_expires_at.
+    """
+    student_qr = str(raw_qr or "").strip()
+    if not student_qr:
+        return None, "No QR data provided", False
+
+    # 1. Fixed QR or direct School ID without hyphen
+    if "-" not in student_qr:
+        cursor.execute(
+            """SELECT student_id, full_name, school_id, email, parent_email, balance,
+                      dynamic_qr_token, dynamic_qr_expires_at
+               FROM students
+               WHERE school_id=%s OR CAST(student_id AS CHAR)=%s OR qr_code=%s""",
+            (student_qr, student_qr, student_qr),
+        )
+        student = cursor.fetchone()
+        if not student:
+            return None, "Student record not found!", False
+        return student, None, False
+
+    # 2. Check if an enrolled school_id or qr_code literally matches the hyphenated string
+    cursor.execute(
+        """SELECT student_id, full_name, school_id, email, parent_email, balance,
+                  dynamic_qr_token, dynamic_qr_expires_at
+           FROM students
+           WHERE school_id=%s OR qr_code=%s""",
+        (student_qr, student_qr),
+    )
+    exact_student = cursor.fetchone()
+    if exact_student:
+        return exact_student, None, False
+
+    # 3. Dynamic QR format: "<student_id>-<token>"
+    parsed_student_id, scanned_token = student_qr.split("-", 1)
+    parsed_student_id = parsed_student_id.strip()
+    scanned_token = scanned_token.strip()
+
+    cursor.execute(
+        """SELECT student_id, full_name, school_id, email, parent_email, balance,
+                  dynamic_qr_token, dynamic_qr_expires_at
+           FROM students
+           WHERE CAST(student_id AS CHAR)=%s OR school_id=%s""",
+        (parsed_student_id, parsed_student_id),
+    )
+    student = cursor.fetchone()
+    if not student:
+        return None, "Student record not found!", False
+
+    active_token = str(student.get("dynamic_qr_token") or "").strip()
+    try:
+        expires_at = int(student.get("dynamic_qr_expires_at") or 0)
+    except (ValueError, TypeError):
+        expires_at = 0
+
+    now_ts = int(time.time())
+
+    if not active_token or scanned_token != active_token:
+        return (
+            None,
+            "Invalid or expired Dynamic QR Code! A newer QR code has already been generated or this code was already used.",
+            True,
+        )
+
+    if expires_at <= 0 or now_ts > expires_at:
+        return (
+            None,
+            "Dynamic QR Code has expired! Please ask the student to regenerate their QR code.",
+            True,
+        )
+
+    return student, None, True
+
+
 # Preview Student Details upon QR scan
 @app.route("/staff_preview_student_qr", methods=["POST"])
 def staff_preview_student_qr():
@@ -3827,27 +3920,32 @@ def staff_preview_student_qr():
         if not student_qr:
             return jsonify({"success": False, "message": "No QR data provided"})
 
-        parsed_student_id = student_qr.split("-", 1)[0] if "-" in student_qr else student_qr
-
         conn = get_connection()
         cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
-        cursor.execute(
-            """SELECT student_id, full_name, school_id, balance
-               FROM students
-               WHERE school_id=%s OR CAST(student_id AS CHAR)=%s OR qr_code=%s""",
-            (student_qr, parsed_student_id, student_qr),
-        )
-        student = cursor.fetchone()
-        conn.close()
+        student, err_msg, is_dynamic = _resolve_and_validate_student_qr(cursor, student_qr)
         if not student:
-            return jsonify({"success": False, "message": "Student record not found!"})
+            conn.close()
+            return jsonify({"success": False, "expired_qr": is_dynamic, "message": err_msg})
 
+        # Ensure at least a 15s window from preview to auto-pay completion if token is still the active one
+        if is_dynamic:
+            now_ts = int(time.time())
+            cur_exp = int(student.get("dynamic_qr_expires_at") or 0)
+            if cur_exp - now_ts < 15:
+                cursor.execute(
+                    "UPDATE students SET dynamic_qr_expires_at=%s WHERE student_id=%s AND dynamic_qr_token=%s",
+                    (now_ts + 15, student["student_id"], student.get("dynamic_qr_token")),
+                )
+                conn.commit()
+
+        conn.close()
         return jsonify({
             "success": True,
             "student_id": student["student_id"],
             "full_name": student["full_name"],
             "school_id": student["school_id"],
-            "balance": float(student["balance"] or 0)
+            "balance": float(student["balance"] or 0),
+            "is_dynamic_qr": is_dynamic
         })
     except Exception as e:
         return jsonify({"success": False, "message": str(e)})
@@ -4123,21 +4221,13 @@ def staff_qr_transaction():
             cart_summary = ", ".join(parts)
         remarks_val = explicit_remarks or cart_summary or None
 
-        # Handle dynamic QR format "<student_id>-<timestamp>"
-        parsed_student_id = student_qr.split("-", 1)[0] if "-" in student_qr else student_qr
-
+        # Validate fixed/school ID or single-use dynamic QR ("<student_id>-<token>")
         conn = get_connection()
         cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
-        cursor.execute(
-            """SELECT student_id, full_name, school_id, email, parent_email, balance
-               FROM students
-               WHERE school_id=%s OR CAST(student_id AS CHAR)=%s OR qr_code=%s""",
-            (student_qr, parsed_student_id, student_qr),
-        )
-        student = cursor.fetchone()
+        student, err_msg, is_dynamic = _resolve_and_validate_student_qr(cursor, student_qr)
         if not student:
             conn.close()
-            return jsonify({"success": False, "message": "Student not found!"})
+            return jsonify({"success": False, "expired_qr": is_dynamic, "message": err_msg})
 
         current_balance = Decimal(str(student["balance"] or 0))
         student_email = str(student.get("email") or student.get("parent_email") or "").strip()
@@ -4153,6 +4243,11 @@ def staff_qr_transaction():
             )
             txn_id = getattr(cursor, "lastrowid", None)
             _deduct_canteen_product_stock(cursor, cart_items)
+            if is_dynamic:
+                cursor.execute(
+                    "UPDATE students SET dynamic_qr_token=NULL, dynamic_qr_expires_at=NULL WHERE student_id=%s",
+                    (student["student_id"],),
+                )
             conn.commit()
             conn.close()
 
@@ -4191,6 +4286,11 @@ def staff_qr_transaction():
             )
             txn_id = getattr(cursor, "lastrowid", None)
             _deduct_canteen_product_stock(cursor, cart_items)
+            if is_dynamic:
+                cursor.execute(
+                    "UPDATE students SET dynamic_qr_token=NULL, dynamic_qr_expires_at=NULL WHERE student_id=%s",
+                    (student["student_id"],),
+                )
             conn.commit()
             conn.close()
 
@@ -4231,10 +4331,16 @@ def staff_qr_transaction():
             })
 
         new_balance = current_balance - amount
-        cursor.execute(
-            "UPDATE students SET balance=%s WHERE student_id=%s",
-            (new_balance, student["student_id"]),
-        )
+        if is_dynamic:
+            cursor.execute(
+                "UPDATE students SET balance=%s, dynamic_qr_token=NULL, dynamic_qr_expires_at=NULL WHERE student_id=%s",
+                (new_balance, student["student_id"]),
+            )
+        else:
+            cursor.execute(
+                "UPDATE students SET balance=%s WHERE student_id=%s",
+                (new_balance, student["student_id"]),
+            )
         cursor.execute(
             """INSERT INTO transactions
                (student_id, customer_name, staff_id, amount, previous_balance, new_balance, status, remarks, type, payment_mode, created_at)
@@ -4537,15 +4643,22 @@ def staff_record_transaction():
             qr_code = data.get("qr_code")
             amount = Decimal(str(data.get("amount", 0)))
 
-            cursor.execute("SELECT student_id, full_name, school_id, email, parent_email, balance FROM students WHERE qr_code=%s", (qr_code,))
-            student = cursor.fetchone()
+            student, err_msg, is_dynamic = _resolve_and_validate_student_qr(cursor, qr_code)
 
             if student:
                 if student["balance"] >= amount:
                     new_balance = student["balance"] - amount
                     now_dt = datetime.datetime.now()
-                    cursor.execute("UPDATE students SET balance=%s WHERE student_id=%s",
-                                   (new_balance, student["student_id"]))
+                    if is_dynamic:
+                        cursor.execute(
+                            "UPDATE students SET balance=%s, dynamic_qr_token=NULL, dynamic_qr_expires_at=NULL WHERE student_id=%s",
+                            (new_balance, student["student_id"]),
+                        )
+                    else:
+                        cursor.execute(
+                            "UPDATE students SET balance=%s WHERE student_id=%s",
+                            (new_balance, student["student_id"]),
+                        )
                     cursor.execute("""
                         INSERT INTO transactions (student_id, customer_name, staff_id, amount, previous_balance, new_balance,
                                                   status, remarks, type, payment_mode, created_at)
@@ -4580,7 +4693,7 @@ def staff_record_transaction():
                 else:
                     return jsonify(success=False, message="Insufficient balance.")
             else:
-                return jsonify(success=False, message="Student not found.")
+                return jsonify(success=False, message=err_msg or "Student not found.")
 
         # ✅ Case 2: Search Student (manual entry)
         elif txn_type == "student":

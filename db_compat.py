@@ -204,6 +204,8 @@ def init_sqlite_db(db_path):
             balance NUMERIC(10, 2) DEFAULT 0.00,
             qr_code VARCHAR(255),
             profile_pic VARCHAR(255),
+            dynamic_qr_token VARCHAR(64) DEFAULT NULL,
+            dynamic_qr_expires_at BIGINT DEFAULT NULL,
             status VARCHAR(20) DEFAULT 'active',
             last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -312,6 +314,14 @@ def init_sqlite_db(db_path):
         );
         """
     )
+    for col_def in (
+        "dynamic_qr_token VARCHAR(64) DEFAULT NULL",
+        "dynamic_qr_expires_at BIGINT DEFAULT NULL",
+    ):
+        try:
+            conn.execute(f"ALTER TABLE students ADD COLUMN {col_def}")
+        except Exception:
+            pass
     try:
         conn.execute("""
             UPDATE transactions
@@ -395,6 +405,8 @@ def ensure_mysql_schema(conn):
                 balance DECIMAL(10, 2) DEFAULT 0.00,
                 qr_code VARCHAR(255),
                 profile_pic VARCHAR(255) DEFAULT NULL,
+                dynamic_qr_token VARCHAR(64) DEFAULT NULL,
+                dynamic_qr_expires_at BIGINT DEFAULT NULL,
                 status VARCHAR(20) DEFAULT 'active',
                 last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -469,6 +481,14 @@ def ensure_mysql_schema(conn):
                 pass
         try:
             cur.execute("ALTER TABLE students ADD COLUMN profile_pic VARCHAR(255) DEFAULT NULL")
+        except Exception:
+            pass
+        try:
+            cur.execute("ALTER TABLE students ADD COLUMN dynamic_qr_token VARCHAR(64) DEFAULT NULL")
+        except Exception:
+            pass
+        try:
+            cur.execute("ALTER TABLE students ADD COLUMN dynamic_qr_expires_at BIGINT DEFAULT NULL")
         except Exception:
             pass
         try:

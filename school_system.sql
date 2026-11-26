@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS students (
     balance DECIMAL(10, 2) DEFAULT 0.00,
     qr_code VARCHAR(255),
     profile_pic VARCHAR(255) DEFAULT NULL,
+    dynamic_qr_token VARCHAR(64) DEFAULT NULL,
+    dynamic_qr_expires_at BIGINT DEFAULT NULL,
     status VARCHAR(20) DEFAULT 'active',
     last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

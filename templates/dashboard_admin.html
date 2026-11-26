@@ -2125,23 +2125,22 @@
       const qrData = (rawQr || "").trim();
       if (!qrData) return false;
 
-      // Handle dynamic QR format "<student_id>-<timestamp>" or direct school_id
-      const parsedPart = qrData.includes("-") ? qrData.split("-")[0] : qrData;
+      // Dynamic QRs contain "-" and MUST be verified against the backend active token
+      if (!qrData.includes("-")) {
+        const students = getStudentDirectoryList();
+        const matched = students.find(s =>
+          s.school_id === qrData ||
+          s.school_id.toLowerCase() === qrData.toLowerCase() ||
+          (s.student_id && s.student_id === qrData)
+        );
 
-      const students = getStudentDirectoryList();
-      let matched = students.find(s => 
-        s.school_id === qrData ||
-        s.school_id.toLowerCase() === qrData.toLowerCase() ||
-        (s.student_id && s.student_id === parsedPart) ||
-        s.school_id === parsedPart
-      );
-
-      if (matched) {
-        executeQrStudentSelection(matched);
-        return true;
+        if (matched) {
+          executeQrStudentSelection(matched);
+          return true;
+        }
       }
 
-      // If not matched in rendered table, query backend /staff_preview_student_qr
+      // Query backend /staff_preview_student_qr to validate dynamic QR token, expiry, and lookup
       try {
         const resp = await fetch("/staff_preview_student_qr", {
           method: "POST",
@@ -2158,6 +2157,13 @@
           };
           executeQrStudentSelection(apiStudent);
           return true;
+        } else if (data && data.message) {
+          showToast(data.message, "error");
+          const statusEl = document.getElementById("adminScannerStatus");
+          if (statusEl) {
+            statusEl.innerHTML = `<span class="text-rose-400 font-bold">❌ ${data.message}</span>`;
+          }
+          return false;
         }
       } catch (netErr) {
         console.warn("Backend QR check failed:", netErr);
