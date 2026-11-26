@@ -1,7 +1,7 @@
 from decimal import Decimal
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import Flask, render_template, request, redirect, url_for, session, flash, Response, send_file, jsonify
-import os, sys, re, datetime, random, uuid, io, smtplib, qrcode, time, json, threading
+import os, sys, re, datetime, random, uuid, io, csv, smtplib, qrcode, time, json, threading
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(BASE_DIR)
@@ -3137,7 +3137,7 @@ def dashboard_admin():
     other_totals = [float(r["others"] or 0) for r in dist_rows]
 
     # Registered students list
-    cursor.execute("SELECT student_id, school_id, full_name, balance, status, created_at FROM students ORDER BY created_at DESC")
+    cursor.execute("SELECT student_id, school_id, full_name, grade_level, strand, balance, status, created_at FROM students ORDER BY created_at DESC")
     registered_students = cursor.fetchall()
 
     # Pending top-ups
@@ -3147,6 +3147,7 @@ def dashboard_admin():
     # Transactions list (Complete master financial audit log)
     cursor.execute("""
         SELECT t.transaction_id, t.created_at, t.type, t.amount, t.payment_mode,
+               t.previous_balance, t.new_balance,
                COALESCE(s.full_name, a.full_name, 'Canteen Cashier') AS staff_name,
                COALESCE(st.full_name, t.customer_name, 'Walk-in Customer') AS customer_name,
                COALESCE(st.school_id, '') AS student_name,
@@ -3344,6 +3345,190 @@ def admin_account_approval():
             "new_status": new_status,
             "is_main_admin": 0
         })
+
+
+@app.route("/admin/export/<export_type>")
+def admin_export_csv(export_type):
+    admin = _get_logged_in_admin()
+    if not admin:
+        return jsonify({"success": False, "message": "Unauthorized. Admin privileges required."}), 403
+
+    export_key = (export_type or "").strip().lower()
+    start_date = (request.args.get("start_date") or "").strip()
+    end_date = (request.args.get("end_date") or "").strip()
+
+    conn = get_connection()
+    cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
+
+    output = io.StringIO()
+    output.write("\ufeff")  # UTF-8 BOM for Excel compatibility
+    writer = csv.writer(output)
+    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+
+    if export_key == "transactions":
+        sql = """
+            SELECT t.transaction_id, t.created_at, t.type, t.amount, t.payment_mode,
+                   t.previous_balance, t.new_balance,
+                   COALESCE(s.full_name, a.full_name, 'Admin / Cashier') AS staff_name,
+                   COALESCE(st.full_name, t.customer_name, 'Walk-in Customer') AS customer_name,
+                   COALESCE(st.school_id, '') AS school_id,
+                   t.status, t.remarks
+            FROM transactions t
+            LEFT JOIN staff s ON t.staff_id = s.staff_id
+            LEFT JOIN admins a ON t.admin_id = a.admin_id
+            LEFT JOIN students st ON t.student_id = st.student_id
+            WHERE 1=1
+        """
+        params = []
+        if start_date:
+            sql += " AND DATE(t.created_at) >= %s"
+            params.append(start_date)
+        if end_date:
+            sql += " AND DATE(t.created_at) <= %s"
+            params.append(end_date)
+        sql += " ORDER BY t.created_at DESC"
+        cursor.execute(sql, tuple(params))
+        rows = cursor.fetchall() or []
+
+        writer.writerow([
+            "Transaction ID", "Date & Time", "Student / Customer", "School ID",
+            "Type", "Payment Method", "Amount (PHP)", "Previous Balance (PHP)",
+            "New Balance (PHP)", "Status", "Handled By", "Remarks"
+        ])
+        topup_sum = 0.0
+        purchase_sum = 0.0
+        for r in rows:
+            amt = float(r.get("amount") or 0)
+            ttype = str(r.get("type") or "purchase").lower()
+            rem = str(r.get("remarks") or "")
+            status_label = "Reversed" if ("reversal" in rem.lower() or "reversed" in rem.lower() or amt < 0) else str(r.get("status") or "completed")
+            if ttype == "topup":
+                topup_sum += amt
+            else:
+                purchase_sum += amt
+            writer.writerow([
+                f"#{r['transaction_id']}",
+                str(r.get("created_at") or ""),
+                r.get("customer_name") or "Walk-in Customer",
+                r.get("school_id") or "N/A",
+                ttype.upper(),
+                str(r.get("payment_mode") or "cash").upper(),
+                f"{amt:.2f}",
+                f"{float(r['previous_balance']):.2f}" if r.get("previous_balance") is not None else "N/A",
+                f"{float(r['new_balance']):.2f}" if r.get("new_balance") is not None else "N/A",
+                status_label,
+                r.get("staff_name") or "Admin",
+                rem or "---"
+            ])
+        writer.writerow([])
+        writer.writerow(["--- TRANSACTION LEDGER SUMMARY ---"])
+        writer.writerow(["Net Top-Ups (PHP):", f"PHP {topup_sum:.2f}"])
+        writer.writerow(["Total Purchases (PHP):", f"PHP {purchase_sum:.2f}"])
+        writer.writerow(["Total Records Exported:", len(rows)])
+        filename = f"scuola_admin_transactions_{today_str}.csv"
+
+    elif export_key in ("counter_sales", "unregistered"):
+        sql = """
+            SELECT t.transaction_id, t.created_at, t.amount, t.payment_mode,
+                   t.status, t.remarks,
+                   COALESCE(s.full_name, a.full_name, 'Canteen Cashier') AS staff_name,
+                   COALESCE(st.full_name, t.customer_name, 'Walk-in Customer') AS customer_name,
+                   COALESCE(st.school_id, '') AS school_id
+            FROM transactions t
+            LEFT JOIN staff s ON t.staff_id = s.staff_id
+            LEFT JOIN admins a ON t.admin_id = a.admin_id
+            LEFT JOIN students st ON t.student_id = st.student_id
+            WHERE t.type != 'topup'
+              AND (t.student_id IS NULL OR LOWER(COALESCE(t.payment_mode, '')) IN ('cash', 'gcash', 'ewallet', 'e-wallet'))
+        """
+        params = []
+        if start_date:
+            sql += " AND DATE(t.created_at) >= %s"
+            params.append(start_date)
+        if end_date:
+            sql += " AND DATE(t.created_at) <= %s"
+            params.append(end_date)
+        sql += " ORDER BY t.created_at DESC"
+        cursor.execute(sql, tuple(params))
+        rows = cursor.fetchall() or []
+
+        writer.writerow([
+            "Transaction ID", "Date & Time", "Customer / Student", "School ID",
+            "Payment Tender", "Amount (PHP)", "Items / Remarks", "Status", "Cashier Staff"
+        ])
+        cash_sum = 0.0
+        gcash_sum = 0.0
+        for r in rows:
+            amt = float(r.get("amount") or 0)
+            pm = str(r.get("payment_mode") or "cash").lower()
+            if pm in ("gcash", "ewallet", "e-wallet"):
+                gcash_sum += amt
+                pm_label = "GCash"
+            else:
+                cash_sum += amt
+                pm_label = "Cash"
+            writer.writerow([
+                f"#{r['transaction_id']}",
+                str(r.get("created_at") or ""),
+                r.get("customer_name") or "Walk-in Customer",
+                r.get("school_id") or "Direct / Walk-In",
+                pm_label,
+                f"{amt:.2f}",
+                r.get("remarks") or "---",
+                r.get("status") or "completed",
+                r.get("staff_name") or "Canteen Cashier"
+            ])
+        writer.writerow([])
+        writer.writerow(["--- COUNTER & WALK-IN SALES SUMMARY ---"])
+        writer.writerow(["Physical Cash Sales (PHP):", f"PHP {cash_sum:.2f}"])
+        writer.writerow(["GCash Counter Sales (PHP):", f"PHP {gcash_sum:.2f}"])
+        writer.writerow(["Total Counter Sales (PHP):", f"PHP {(cash_sum + gcash_sum):.2f}"])
+        writer.writerow(["Total Orders Exported:", len(rows)])
+        filename = f"scuola_admin_counter_sales_{today_str}.csv"
+
+    elif export_key == "students":
+        cursor.execute("""
+            SELECT student_id, school_id, full_name, grade_level, strand, balance, status, created_at
+            FROM students
+            ORDER BY created_at DESC
+        """)
+        rows = cursor.fetchall() or []
+        writer.writerow([
+            "Internal ID", "School ID", "Full Name", "Grade Level", "Strand",
+            "Available Balance (PHP)", "Account Status", "Registered At"
+        ])
+        total_bal = 0.0
+        for s in rows:
+            bal = float(s.get("balance") or 0)
+            total_bal += bal
+            writer.writerow([
+                f"#{s['student_id']}",
+                s.get("school_id") or "",
+                s.get("full_name") or "",
+                s.get("grade_level") or "---",
+                s.get("strand") or "---",
+                f"{bal:.2f}",
+                s.get("status") or "active",
+                str(s.get("created_at") or "")
+            ])
+        writer.writerow([])
+        writer.writerow(["--- REGISTERED STUDENTS SUMMARY ---"])
+        writer.writerow(["Total Enrolled Students:", len(rows)])
+        writer.writerow(["Combined Wallet Float (PHP):", f"PHP {total_bal:.2f}"])
+        filename = f"scuola_admin_students_{today_str}.csv"
+
+    else:
+        conn.close()
+        return jsonify({"success": False, "message": "Invalid export type."}), 400
+
+    conn.close()
+    csv_data = output.getvalue()
+    output.close()
+    return Response(
+        csv_data,
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 
 

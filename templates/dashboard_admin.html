@@ -1264,7 +1264,13 @@
               </h3>
               <p class="text-xs text-slate-500">Comprehensive overview of all enrolled student accounts and wallet balances</p>
             </div>
-            <input type="text" id="filterStudentsInput" onkeyup="filterRegStudents()" placeholder="Search name or ID..." class="text-xs border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-purple-400 focus:outline-none w-full sm:w-64">
+            <div class="flex flex-wrap items-center gap-2">
+              <input type="text" id="filterStudentsInput" onkeyup="filterRegStudents()" placeholder="Search name or ID..." class="text-xs border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-purple-400 focus:outline-none w-full sm:w-64">
+              <button type="button" onclick="exportAdminCsv('students')" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5 active:scale-95">
+                <span>📥</span>
+                <span>Export Students CSV</span>
+              </button>
+            </div>
           </div>
 
           <div class="overflow-x-auto rounded-xl border border-slate-100 mt-4">
@@ -1282,7 +1288,15 @@
               </thead>
               <tbody class="divide-y divide-slate-100">
                 {% for s in registered_students %}
-                <tr class="hover:bg-purple-50/40 transition" data-school-id="{{ s.school_id }}">
+                <tr class="hover:bg-purple-50/40 transition export-student-row"
+                    data-school-id="{{ s.school_id }}"
+                    data-internalid="{{ s.student_id }}"
+                    data-name="{{ s.full_name }}"
+                    data-grade="{{ s.grade_level or '---' }}"
+                    data-strand="{{ s.strand or '---' }}"
+                    data-balance="{{ '%.2f'|format(s.balance|float) }}"
+                    data-status="{{ s.status or 'active' }}"
+                    data-created="{{ s.created_at }}">
                   <td class="px-4 py-3 font-mono text-slate-500">#{{ s.student_id }}</td>
                   <td class="px-4 py-3 font-mono font-bold text-purple-900">{{ s.school_id }}</td>
                   <td class="px-4 py-3 font-semibold text-slate-900">{{ s.full_name }}</td>
@@ -1543,7 +1557,16 @@
                 <button type="button" onclick="setAdminTxnFilter('gcash', this)" class="admin-mode-pill px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 transition">📱 GCash</button>
                 <button type="button" onclick="setAdminTxnFilter('topup', this)" class="admin-mode-pill px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 transition">⚡ Top-Ups</button>
               </div>
-              <input type="text" id="filterTxnInput" onkeyup="filterTxnTable()" placeholder="Search transactions, name, ID..." class="text-xs border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-purple-400 focus:outline-none w-full sm:w-56">
+              <div class="flex items-center gap-1.5 text-xs">
+                <input type="date" id="filterTxnStartDate" onchange="filterTxnTable()" title="Start Date" class="text-xs border border-slate-300 rounded-xl px-2.5 py-1.5 focus:ring-2 focus:ring-purple-400 focus:outline-none">
+                <span class="text-slate-400 font-bold">to</span>
+                <input type="date" id="filterTxnEndDate" onchange="filterTxnTable()" title="End Date" class="text-xs border border-slate-300 rounded-xl px-2.5 py-1.5 focus:ring-2 focus:ring-purple-400 focus:outline-none">
+              </div>
+              <input type="text" id="filterTxnInput" onkeyup="filterTxnTable()" placeholder="Search transactions, name, ID..." class="text-xs border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-purple-400 focus:outline-none w-full sm:w-52">
+              <button type="button" onclick="exportAdminCsv('transactions')" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5 active:scale-95">
+                <span>📥</span>
+                <span>Export Ledger CSV</span>
+              </button>
             </div>
           </div>
 
@@ -1565,7 +1588,19 @@
               <tbody class="divide-y divide-slate-100">
                 {% for tx in transactions %}
                 {% set tx_mode = (tx.payment_mode or 'cash')|lower %}
-                <tr id="txn-{{ tx.transaction_id }}" class="hover:bg-purple-50/40 transition" data-mode="{{ tx_mode }}" data-type="{{ (tx.type or 'purchase')|lower }}">
+                <tr id="txn-{{ tx.transaction_id }}" class="hover:bg-purple-50/40 transition export-txn-row"
+                    data-txnid="{{ tx.transaction_id }}"
+                    data-customer="{{ tx.customer_name or 'Walk-in Customer' }}"
+                    data-schoolid="{{ tx.student_name or 'N/A' }}"
+                    data-amount="{{ '%.2f'|format(tx.amount|float) }}"
+                    data-type="{{ (tx.type or 'purchase')|lower }}"
+                    data-mode="{{ tx_mode }}"
+                    data-prevbal="{{ '%.2f'|format(tx.previous_balance|float) if tx.previous_balance is not none else 'N/A' }}"
+                    data-newbal="{{ '%.2f'|format(tx.new_balance|float) if tx.new_balance is not none else 'N/A' }}"
+                    data-status="{{ 'Reversed' if (tx.remarks and ('Reversal' in tx.remarks or 'Reversed' in tx.remarks)) or (tx.amount|float < 0) else tx.status }}"
+                    data-handler="{{ tx.staff_name or 'Admin' }}"
+                    data-remarks="{{ tx.remarks or '---' }}"
+                    data-datetime="{{ tx.created_at }}">
                   <td class="px-4 py-3 font-mono text-slate-500">#{{ tx.transaction_id }}</td>
                   <td class="px-4 py-3">
                     <span class="font-semibold text-slate-900">{{ tx.customer_name or 'Walk-in Customer' }}</span>
@@ -1632,7 +1667,18 @@
               </h3>
               <p class="text-xs text-slate-500">All canteen counter purchases paid via Cash or GCash</p>
             </div>
-            <input type="text" id="filterUnregInput" onkeyup="filterUnregTable()" placeholder="Search counter sales..." class="text-xs border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-purple-400 focus:outline-none w-full sm:w-64">
+            <div class="flex flex-wrap items-center gap-2">
+              <div class="flex items-center gap-1.5 text-xs">
+                <input type="date" id="filterUnregStartDate" onchange="filterUnregTable()" title="Start Date" class="text-xs border border-slate-300 rounded-xl px-2.5 py-1.5 focus:ring-2 focus:ring-purple-400 focus:outline-none">
+                <span class="text-slate-400 font-bold">to</span>
+                <input type="date" id="filterUnregEndDate" onchange="filterUnregTable()" title="End Date" class="text-xs border border-slate-300 rounded-xl px-2.5 py-1.5 focus:ring-2 focus:ring-purple-400 focus:outline-none">
+              </div>
+              <input type="text" id="filterUnregInput" onkeyup="filterUnregTable()" placeholder="Search counter sales..." class="text-xs border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-purple-400 focus:outline-none w-full sm:w-56">
+              <button type="button" onclick="exportAdminCsv('unregistered')" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5 active:scale-95">
+                <span>📥</span>
+                <span>Export Sales CSV</span>
+              </button>
+            </div>
           </div>
 
           <div class="overflow-x-auto rounded-xl border border-slate-100 mt-4 max-h-[540px] overflow-y-auto">
@@ -1651,7 +1697,16 @@
               </thead>
               <tbody class="divide-y divide-slate-100">
                 {% for u in unregistered_transactions %}
-                <tr class="hover:bg-purple-50/40 transition">
+                <tr class="hover:bg-purple-50/40 transition export-unreg-row"
+                    data-txnid="{{ u.transaction_id }}"
+                    data-customer="{{ u.customer_name or 'Walk-in Customer' }}"
+                    data-schoolid="{{ u.school_id or 'Direct / Walk-In' }}"
+                    data-amount="{{ '%.2f'|format(u.amount|float) }}"
+                    data-mode="{{ (u.payment_mode or 'cash')|lower }}"
+                    data-remarks="{{ u.remarks or '---' }}"
+                    data-status="{{ u.status }}"
+                    data-datetime="{{ u.created_at }}"
+                    data-handler="{{ u.staff_name or 'Canteen Cashier' }}">
                   <td class="px-4 py-3 font-mono text-slate-500">#{{ u.transaction_id }}</td>
                   <td class="px-4 py-3">
                     <span class="font-bold text-slate-900">{{ u.customer_name or 'Walk-in Customer' }}</span>
@@ -3147,10 +3202,13 @@
 
     function filterTxnTable() {
       const q = (document.getElementById("filterTxnInput").value || "").toLowerCase().trim();
+      const startDate = (document.getElementById("filterTxnStartDate")?.value || "").trim();
+      const endDate = (document.getElementById("filterTxnEndDate")?.value || "").trim();
       document.querySelectorAll("#transactionsTable tbody tr").forEach(row => {
         const rowText = (row.textContent || "").toLowerCase();
         const rowMode = (row.dataset.mode || "").toLowerCase();
         const rowType = (row.dataset.type || "").toLowerCase();
+        const rowDate = (row.dataset.datetime || "").slice(0, 10);
         let matchesMode = true;
         if (activeAdminTxnFilter === 'wallet') {
           matchesMode = (rowMode === 'wallet' || rowMode === 'cashless');
@@ -3162,17 +3220,165 @@
           matchesMode = (rowType === 'topup');
         }
 
+        const matchesDate = (!startDate || (rowDate && rowDate >= startDate)) && (!endDate || (rowDate && rowDate <= endDate));
         const matchesQuery = (!q || rowText.includes(q));
-        row.style.display = (matchesMode && matchesQuery) ? "" : "none";
+        row.style.display = (matchesMode && matchesDate && matchesQuery) ? "" : "none";
       });
     }
 
     function filterUnregTable() {
       const q = (document.getElementById("filterUnregInput").value || "").toLowerCase().trim();
+      const startDate = (document.getElementById("filterUnregStartDate")?.value || "").trim();
+      const endDate = (document.getElementById("filterUnregEndDate")?.value || "").trim();
       document.querySelectorAll("#unregisteredTable tbody tr").forEach(row => {
         const rowText = (row.textContent || "").toLowerCase();
-        row.style.display = (!q || rowText.includes(q)) ? "" : "none";
+        const rowDate = (row.dataset.datetime || "").slice(0, 10);
+        const matchesDate = (!startDate || (rowDate && rowDate >= startDate)) && (!endDate || (rowDate && rowDate <= endDate));
+        row.style.display = ((!q || rowText.includes(q)) && matchesDate) ? "" : "none";
       });
+    }
+
+    function exportAdminCsv(exportKey) {
+      const escCsv = (val) => `"${String(val === null || val === undefined ? "" : val).replace(/"/g, '""')}"`;
+      const csvLines = [];
+      const dateStr = new Date().toISOString().slice(0, 10);
+      let filename = `scuola_admin_${exportKey}_${dateStr}.csv`;
+      let exportedCount = 0;
+
+      if (exportKey === "transactions") {
+        const rows = Array.from(document.querySelectorAll("#transactionsTable tbody tr.export-txn-row"))
+          .filter(r => r.style.display !== "none");
+        if (rows.length === 0) {
+          showToast("No transactions match the current filter to export!", "error");
+          return;
+        }
+        csvLines.push([
+          "Transaction ID", "Date & Time", "Student / Customer", "School ID",
+          "Type", "Payment Method", "Amount (PHP)", "Previous Balance (PHP)",
+          "New Balance (PHP)", "Status", "Handled By", "Remarks"
+        ].map(escCsv).join(","));
+
+        let topupSum = 0;
+        let purchaseSum = 0;
+        rows.forEach(row => {
+          const amt = parseFloat(row.dataset.amount || 0) || 0;
+          const ttype = (row.dataset.type || "purchase").toLowerCase();
+          if (ttype === "topup") topupSum += amt;
+          else purchaseSum += amt;
+          const liveStatus = (row.querySelector(".status-cell")?.textContent || row.dataset.status || "completed").trim();
+          const liveRemarks = (row.querySelector(".remarks-cell")?.textContent || row.dataset.remarks || "---").trim();
+          csvLines.push([
+            `#${row.dataset.txnid || ""}`,
+            row.dataset.datetime || "",
+            row.dataset.customer || "Walk-in Customer",
+            row.dataset.schoolid || "N/A",
+            ttype.toUpperCase(),
+            (row.dataset.mode || "cash").toUpperCase(),
+            amt.toFixed(2),
+            row.dataset.prevbal || "N/A",
+            row.dataset.newbal || "N/A",
+            liveStatus,
+            row.dataset.handler || "Admin",
+            liveRemarks
+          ].map(escCsv).join(","));
+        });
+        csvLines.push("");
+        csvLines.push([escCsv("--- TRANSACTION LEDGER SUMMARY ---")].join(","));
+        csvLines.push([escCsv("Net Top-Ups (PHP):"), escCsv(`PHP ${topupSum.toFixed(2)}`)].join(","));
+        csvLines.push([escCsv("Total Purchases (PHP):"), escCsv(`PHP ${purchaseSum.toFixed(2)}`)].join(","));
+        csvLines.push([escCsv("Total Records Exported:"), escCsv(rows.length)].join(","));
+        exportedCount = rows.length;
+        filename = `scuola_admin_transactions_${dateStr}.csv`;
+
+      } else if (exportKey === "unregistered") {
+        const rows = Array.from(document.querySelectorAll("#unregisteredTable tbody tr.export-unreg-row"))
+          .filter(r => r.style.display !== "none");
+        if (rows.length === 0) {
+          showToast("No counter sales match the current filter to export!", "error");
+          return;
+        }
+        csvLines.push([
+          "Transaction ID", "Date & Time", "Customer / Student", "School ID",
+          "Payment Tender", "Amount (PHP)", "Items / Remarks", "Status", "Cashier Staff"
+        ].map(escCsv).join(","));
+
+        let cashSum = 0;
+        let gcashSum = 0;
+        rows.forEach(row => {
+          const amt = parseFloat(row.dataset.amount || 0) || 0;
+          const mode = (row.dataset.mode || "cash").toLowerCase();
+          const isGcash = ["gcash", "ewallet", "e-wallet"].includes(mode);
+          if (isGcash) gcashSum += amt;
+          else cashSum += amt;
+          csvLines.push([
+            `#${row.dataset.txnid || ""}`,
+            row.dataset.datetime || "",
+            row.dataset.customer || "Walk-in Customer",
+            row.dataset.schoolid || "Direct / Walk-In",
+            isGcash ? "GCash" : "Cash",
+            amt.toFixed(2),
+            row.dataset.remarks || "---",
+            row.dataset.status || "completed",
+            row.dataset.handler || "Canteen Cashier"
+          ].map(escCsv).join(","));
+        });
+        csvLines.push("");
+        csvLines.push([escCsv("--- COUNTER & WALK-IN SALES SUMMARY ---")].join(","));
+        csvLines.push([escCsv("Physical Cash Sales (PHP):"), escCsv(`PHP ${cashSum.toFixed(2)}`)].join(","));
+        csvLines.push([escCsv("GCash Counter Sales (PHP):"), escCsv(`PHP ${gcashSum.toFixed(2)}`)].join(","));
+        csvLines.push([escCsv("Total Counter Sales (PHP):"), escCsv(`PHP ${(cashSum + gcashSum).toFixed(2)}`)].join(","));
+        csvLines.push([escCsv("Total Orders Exported:"), escCsv(rows.length)].join(","));
+        exportedCount = rows.length;
+        filename = `scuola_admin_counter_sales_${dateStr}.csv`;
+
+      } else if (exportKey === "students") {
+        const rows = Array.from(document.querySelectorAll("#regStudentsTable tbody tr.export-student-row"))
+          .filter(r => r.style.display !== "none");
+        if (rows.length === 0) {
+          showToast("No students match the current filter to export!", "error");
+          return;
+        }
+        csvLines.push([
+          "Internal ID", "School ID", "Full Name", "Grade Level", "Strand",
+          "Available Balance (PHP)", "Account Status", "Registered At"
+        ].map(escCsv).join(","));
+
+        let totalBal = 0;
+        rows.forEach(row => {
+          const liveBalText = (row.querySelector(".student-bal-cell")?.textContent || "").replace(/[^\d.-]/g, "");
+          const bal = parseFloat(liveBalText || row.dataset.balance || 0) || 0;
+          totalBal += bal;
+          csvLines.push([
+            `#${row.dataset.internalid || ""}`,
+            row.dataset.schoolId || "",
+            row.dataset.name || "",
+            row.dataset.grade || "---",
+            row.dataset.strand || "---",
+            bal.toFixed(2),
+            row.dataset.status || "active",
+            row.dataset.created || ""
+          ].map(escCsv).join(","));
+        });
+        csvLines.push("");
+        csvLines.push([escCsv("--- REGISTERED STUDENTS SUMMARY ---")].join(","));
+        csvLines.push([escCsv("Total Enrolled Students:"), escCsv(rows.length)].join(","));
+        csvLines.push([escCsv("Combined Wallet Float (PHP):"), escCsv(`PHP ${totalBal.toFixed(2)}`)].join(","));
+        exportedCount = rows.length;
+        filename = `scuola_admin_students_${dateStr}.csv`;
+      } else {
+        return;
+      }
+
+      const blob = new Blob(["\uFEFF" + csvLines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast(`📥 Exported ${exportedCount} record(s) to ${filename}!`, "success");
     }
 
     function filterTopupsByDate() {
