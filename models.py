@@ -1,5 +1,12 @@
 from extensions import db
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+_PH_TZ = timezone(timedelta(hours=8))
+
+
+def _now_pst():
+    return datetime.now(_PH_TZ).replace(tzinfo=None)
+
 
 class Student(db.Model):
     __tablename__ = "students"
@@ -11,7 +18,7 @@ class Student(db.Model):
     balance = db.Column(db.Numeric(10,2), default=0.00)
     qr_code = db.Column(db.String(255), unique=True)
     status = db.Column(db.Enum("active", "inactive"), default="active")
-    created_at = db.Column(db.TIMESTAMP, default=datetime.utcnow)
+    created_at = db.Column(db.TIMESTAMP, default=_now_pst)
 
     transactions = db.relationship("Transaction", backref="student", lazy=True)
 
@@ -25,6 +32,6 @@ class Transaction(db.Model):
     new_balance = db.Column(db.Numeric(10,2))
     status = db.Column(db.Enum("pending", "completed", "failed"), default="pending")
     remarks = db.Column(db.Text)
-    created_at = db.Column(db.TIMESTAMP, default=datetime.utcnow)
+    created_at = db.Column(db.TIMESTAMP, default=_now_pst)
     type = db.Column(db.Enum("topup", "purchase"), default="purchase")
     payment_mode = db.Column(db.Enum("cash", "gcash", "bank"), default="cash")

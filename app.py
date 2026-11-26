@@ -48,6 +48,19 @@ app.secret_key = os.environ.get("SECRET_KEY", "fallback_key")
 app.config["PERMANENT_SESSION_LIFETIME"] = datetime.timedelta(days=30)
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
+# Philippine Standard Time (UTC+08:00 — no DST)
+PH_TZ = datetime.timezone(datetime.timedelta(hours=8), name="Asia/Manila")
+
+
+def now_pst():
+    """Return current Philippine Standard Time (UTC+08:00) as a naive datetime matching MySQL session '+08:00'."""
+    return datetime.datetime.now(PH_TZ).replace(tzinfo=None)
+
+
+def today_pst():
+    """Return current date in Philippine Standard Time (UTC+08:00)."""
+    return now_pst().date()
+
 # ✅ Configure SQLAlchemy to connect to MySQL database (with local SQLite fallback)
 from urllib.parse import urlparse, unquote
 
@@ -87,6 +100,9 @@ _ssl_arg = "&ssl_mode=REQUIRED" if _MYSQL_SSL else ""
 _MYSQL_URI = f"mysql+pymysql://{_MYSQL_USER}:{_MYSQL_PASSWORD}@{_MYSQL_HOST}:{_MYSQL_PORT}/{_MYSQL_DB}?charset=utf8mb4{_ssl_arg}"
 app.config['SQLALCHEMY_DATABASE_URI'] = _MYSQL_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'connect_args': {'init_command': "SET time_zone = '+08:00'"}
+}
 
 # ✅ Initialize db with app
 db.init_app(app)
@@ -639,6 +655,7 @@ def get_connection():
                         database=app.config.get("MYSQL_DB", "school_system"),
                         autocommit=True,
                         charset="utf8mb4",
+                        init_command="SET time_zone = '+08:00'",
                         connect_timeout=8.0 if is_remote else 1.5,
                         **ssl_kwargs
                     )
@@ -656,6 +673,12 @@ def get_connection():
             try:
                 conn = mysql.connection
                 if conn is not None:
+                    try:
+                        _tz_cur = conn.cursor()
+                        _tz_cur.execute("SET time_zone = '+08:00'")
+                        _tz_cur.close()
+                    except Exception:
+                        pass
                     ensure_mysql_schema(conn)
                     _ACTIVE_DB_TYPE = "flask_mysql"
                     return conn
@@ -907,7 +930,7 @@ def send_email(to_emails=None, subject="", body_text=None, body_html=None, to=No
 def generate_and_send_otp(email, subject="Your Secure Login OTP", role="student"):
     email = (email or "").strip()
     otp = str(random.randint(100000, 999999))
-    expires = datetime.datetime.now() + datetime.timedelta(minutes=10)
+    expires = now_pst() + datetime.timedelta(minutes=10)
 
     # Always store in session (including role-specific keys so multi-tab OTP logins never collide)
     session["pending_otp"] = otp
@@ -2644,7 +2667,7 @@ def _get_trending_canteen_recommendations(cursor):
     except Exception:
         txns = []
 
-    today_date = datetime.date.today()
+    today_date = today_pst()
     latest_tx_date = today_date
     for t in txns:
         dt = t.get("created_at")
@@ -2824,7 +2847,7 @@ def _get_staff_sales_analytics(cursor, requested_tf="daily"):
     """)
     all_rows = cursor.fetchall() or []
 
-    today_date = datetime.date.today()
+    today_date = today_pst()
     latest_active_date = today_date
     for r in all_rows:
         dt = r.get("created_at")
@@ -2941,11 +2964,14 @@ def _get_staff_sales_analytics(cursor, requested_tf="daily"):
         "monthly": calc_kpis(monthly_rows)
     }
 
-    hour_slots = list(range(7, 19))
-    daily_labels = [datetime.time(h, 0).strftime("%I %p").lstrip("0") for h in hour_slots]
-    d_wallet, d_cash, d_gcash, d_total, d_orders = [], [], [], [], []
     daily_chart_source = daily_rows if len(daily_rows) > 0 else [x for x in processed_rows if x["tx_date"] == latest_active_date]
     daily_chart_date = today_date if len(daily_rows) > 0 else latest_active_date
+    chart_hours = [x["tx_hour"] for x in daily_chart_source if isinstance(x.get("tx_hour"), int) and 0 <= x["tx_hour"] <= 23]
+    min_hour = min([7] + chart_hours)
+    max_hour = max([18] + chart_hours)
+    hour_slots = list(range(min_hour, max_hour + 1))
+    daily_labels = [datetime.time(h, 0).strftime("%I %p").lstrip("0") for h in hour_slots]
+    d_wallet, d_cash, d_gcash, d_total, d_orders = [], [], [], [], []
     for h in hour_slots:
         h_rows = [x for x in daily_chart_source if x["tx_hour"] == h]
         w = round(sum(x["amount"] for x in h_rows if x["resolved_mode"] == "wallet"), 2)
@@ -3363,7 +3389,7 @@ def admin_export_csv(export_type):
     output = io.StringIO()
     output.write("\ufeff")  # UTF-8 BOM for Excel compatibility
     writer = csv.writer(output)
-    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    today_str = now_pst().strftime("%Y-%m-%d")
 
     if export_key == "transactions":
         sql = """
@@ -4408,7 +4434,7 @@ def send_student_pos_receipt_email(
         return False
 
     amt_val = float(amount or 0)
-    dt_str = str(created_at or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    dt_str = str(created_at or now_pst().strftime("%Y-%m-%d %H:%M:%S"))
     items_str = str(items_summary or "Canteen POS Purchase")
     pm = str(payment_mode or "wallet").lower()
     if pm == "wallet":
@@ -4970,7 +4996,7 @@ def staff_calculator_sale():
 
         staff_id = staff["staff_id"] if staff else None
         staff_name = staff["full_name"] if staff else (admin["full_name"] if admin else "Canteen Cashier")
-        now_dt = datetime.datetime.now()
+        now_dt = now_pst()
 
         conn = get_connection()
         cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
@@ -5087,7 +5113,7 @@ def staff_record_transaction():
             if student:
                 if student["balance"] >= amount:
                     new_balance = student["balance"] - amount
-                    now_dt = datetime.datetime.now()
+                    now_dt = now_pst()
                     if is_dynamic:
                         cursor.execute(
                             "UPDATE students SET balance=%s, dynamic_qr_token=NULL, dynamic_qr_expires_at=NULL WHERE student_id=%s",
@@ -5145,7 +5171,7 @@ def staff_record_transaction():
             if student:
                 if student["balance"] >= amount:
                     new_balance = student["balance"] - amount
-                    now_dt = datetime.datetime.now()
+                    now_dt = now_pst()
                     cursor.execute("UPDATE students SET balance=%s WHERE student_id=%s",
                                    (new_balance, student["student_id"]))
                     cursor.execute("""
@@ -5190,7 +5216,7 @@ def staff_record_transaction():
             amount = Decimal(str(data.get("amount", 0)))
             raw_mode = str(data.get("mode") or "cash").strip().lower()
             mode = "gcash" if raw_mode in ("gcash", "e-wallet", "ewallet") else "cash"
-            now_dt = datetime.datetime.now()
+            now_dt = now_pst()
 
             # Check if school_id / customer_name matches a registered student so we can auto-email their receipt too!
             matched_student = None
@@ -5264,11 +5290,12 @@ def staff_record_transaction():
             raw_mode = str(data.get("mode") or "cash").strip().lower()
             mode = "gcash" if raw_mode in ("gcash", "e-wallet", "ewallet") else "cash"
             customer_name = str(data.get("customer_name") or "").strip() or "Visitor"
+            now_dt = now_pst()
 
             cursor.execute("""
                 INSERT INTO transactions (customer_name, staff_id, amount, status, remarks, type, payment_mode, created_at)
                 VALUES (%s,%s,%s,'completed',%s,'purchase',%s,%s)
-            """, (customer_name, staff_id, amount, remarks_val, mode, datetime.datetime.now()))
+            """, (customer_name, staff_id, amount, remarks_val, mode, now_dt))
             _deduct_canteen_product_stock(cursor, cart_items)
             conn.commit()
             return jsonify(success=True, transaction={
@@ -5278,7 +5305,7 @@ def staff_record_transaction():
                 "remarks": remarks_val,
                 "type": "purchase",
                 "status": "completed",
-                "created_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                "created_at": now_dt.strftime("%Y-%m-%d %H:%M:%S")
             })
 
         else:

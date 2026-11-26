@@ -36,18 +36,18 @@ class SQLiteCompatCursor:
         q = query
         # Translate MySQL %s placeholders to SQLite ?
         q = q.replace("%s", "?")
-        # Translate DEFAULT CURRENT_TIMESTAMP / DEFAULT CURRENT_DATE with required parens in SQLite DDL
-        q = re.sub(r"\bDEFAULT\s+CURRENT_TIMESTAMP\b", "DEFAULT (datetime('now', 'localtime'))", q, flags=re.IGNORECASE)
-        q = re.sub(r"\bDEFAULT\s+CURRENT_DATE\b", "DEFAULT (date('now', 'localtime'))", q, flags=re.IGNORECASE)
-        # Translate MySQL NOW() and CURDATE()
-        q = re.sub(r"\bNOW\(\)", "datetime('now', 'localtime')", q, flags=re.IGNORECASE)
-        q = re.sub(r"\bCURDATE\(\)", "date('now', 'localtime')", q, flags=re.IGNORECASE)
-        q = re.sub(r"\bCURRENT_DATE\b", "date('now', 'localtime')", q, flags=re.IGNORECASE)
-        q = re.sub(r"\bCURRENT_TIMESTAMP\b", "datetime('now', 'localtime')", q, flags=re.IGNORECASE)
-        q = re.sub(r"\bCURRENT_TIME\b", "time('now', 'localtime')", q, flags=re.IGNORECASE)
+        # Translate DEFAULT CURRENT_TIMESTAMP / DEFAULT CURRENT_DATE with explicit Philippine Standard Time (+8 hours) in SQLite DDL
+        q = re.sub(r"\bDEFAULT\s+CURRENT_TIMESTAMP\b", "DEFAULT (datetime('now', '+8 hours'))", q, flags=re.IGNORECASE)
+        q = re.sub(r"\bDEFAULT\s+CURRENT_DATE\b", "DEFAULT (date('now', '+8 hours'))", q, flags=re.IGNORECASE)
+        # Translate MySQL NOW() and CURDATE() to Philippine Standard Time (+8 hours)
+        q = re.sub(r"\bNOW\(\)", "datetime('now', '+8 hours')", q, flags=re.IGNORECASE)
+        q = re.sub(r"\bCURDATE\(\)", "date('now', '+8 hours')", q, flags=re.IGNORECASE)
+        q = re.sub(r"\bCURRENT_DATE\b", "date('now', '+8 hours')", q, flags=re.IGNORECASE)
+        q = re.sub(r"\bCURRENT_TIMESTAMP\b", "datetime('now', '+8 hours')", q, flags=re.IGNORECASE)
+        q = re.sub(r"\bCURRENT_TIME\b", "time('now', '+8 hours')", q, flags=re.IGNORECASE)
         q = re.sub(
-            r"DATEDIFF\(\s*date\('now',\s*'localtime'\)\s*,\s*last_active\s*\)",
-            "CAST(julianday('now', 'localtime') - julianday(COALESCE(last_active, datetime('now', 'localtime'))) AS INTEGER)",
+            r"DATEDIFF\(\s*date\('now',\s*'\+8 hours'\)\s*,\s*last_active\s*\)",
+            "CAST(julianday('now', '+8 hours') - julianday(COALESCE(last_active, datetime('now', '+8 hours'))) AS INTEGER)",
             q,
             flags=re.IGNORECASE,
         )

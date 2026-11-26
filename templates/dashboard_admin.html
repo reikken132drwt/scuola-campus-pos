@@ -3241,7 +3241,7 @@
     function exportAdminCsv(exportKey) {
       const escCsv = (val) => `"${String(val === null || val === undefined ? "" : val).replace(/"/g, '""')}"`;
       const csvLines = [];
-      const dateStr = new Date().toISOString().slice(0, 10);
+      const dateStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
       let filename = `scuola_admin_${exportKey}_${dateStr}.csv`;
       let exportedCount = 0;
 

@@ -4168,7 +4168,7 @@
       const blob = new Blob(["\uFEFF" + csvLines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      const dateStr = new Date().toISOString().slice(0, 10);
+      const dateStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
       a.href = url;
       a.download = `canteen_sales_${tableKey}_${dateStr}.csv`;
       document.body.appendChild(a);
