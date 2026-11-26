@@ -205,6 +205,29 @@
               <p class="nav-subtext text-[10px] text-slate-400 truncate">Enrolled student accounts</p>
             </div>
           </button>
+
+          <button
+            type="button"
+            data-target="accountApprovalsSection"
+            data-category="Directory Management"
+            data-title="Account Approvals &amp; Access Control"
+            data-subtitle="Approve or reject newly registered Admin and Canteen Staff accounts"
+            onclick="switchNavSection('accountApprovalsSection', this)"
+            class="nav-tab w-full px-3 py-2.5 rounded-xl text-left flex items-center gap-3 text-slate-700 hover:bg-slate-100/80 group"
+          >
+            <div class="nav-icon-box w-9 h-9 rounded-lg bg-slate-100 text-slate-600 group-hover:bg-purple-100 group-hover:text-purple-700 flex items-center justify-center shrink-0 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between gap-1">
+                <p class="text-xs font-bold leading-snug truncate">Account Approvals</p>
+                <span id="adminPendingAccountsBadge" class="px-2 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-extrabold shadow-xs {{ 'hidden' if (pending_account_approvals|default([])|length) == 0 else '' }}">
+                  {{ pending_account_approvals|default([])|length }}
+                </span>
+              </div>
+              <p class="nav-subtext text-[10px] text-slate-400 truncate">Admin &amp; Staff moderation</p>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -273,7 +296,7 @@
           </div>
           <div class="min-w-0 leading-tight">
             <p class="text-xs font-extrabold text-slate-900 truncate">{{ admin.full_name }}</p>
-            <p class="text-[10px] font-semibold text-purple-700 truncate">System Administrator</p>
+            <p class="text-[10px] font-semibold text-purple-700 truncate">{{ '👑 Main Administrator' if admin.is_main_admin else '🛡️ Standard Administrator' }}</p>
           </div>
         </div>
         <a
@@ -1283,6 +1306,214 @@
                 {% else %}
                 <tr>
                   <td colspan="7" class="px-4 py-8 text-center text-slate-400">No registered students found in database.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========================================================================= -->
+      <!-- LEVEL 03-B SECTION: MAIN ADMIN ACCOUNT APPROVALS (#accountApprovalsSection) -->
+      <!-- ========================================================================= -->
+      <div id="accountApprovalsSection" class="admin-section hidden space-y-5">
+        <!-- Privilege Banner -->
+        {% if admin.is_main_admin %}
+        <div class="bg-gradient-to-r from-purple-700 to-pink-600 rounded-2xl p-4 sm:p-5 text-white shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl shrink-0">👑</div>
+            <div>
+              <h3 class="text-sm sm:text-base font-extrabold">Main Administrator Access Control</h3>
+              <p class="text-xs text-purple-100 mt-0.5">You are signed in as a <strong>Main Administrator</strong>. Review pending Admin and Canteen Staff registrations below before granting system access.</p>
+            </div>
+          </div>
+          <span class="px-3 py-1.5 rounded-xl bg-white/20 text-xs font-bold whitespace-nowrap self-start sm:self-center">
+            Pending Requests: {{ pending_account_approvals|default([])|length }}
+          </span>
+        </div>
+        {% else %}
+        <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 sm:p-5 text-amber-950 shadow-xs flex items-start gap-3">
+          <div class="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center text-lg shrink-0">🔒</div>
+          <div>
+            <h3 class="text-sm font-extrabold">Standard Administrator (View-Only Moderation)</h3>
+            <p class="text-xs text-amber-800 mt-0.5">Only the designated <strong>Main Administrator</strong> can approve, reject, or promote Admin and Canteen Staff registrations.</p>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Table 1: Pending Admin & Staff Registrations -->
+        <div class="bg-white rounded-2xl ring-1 ring-purple-100 shadow-md p-5 sm:p-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-4">
+            <div>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-purple-700">03 • Registration Moderation Queue</span>
+              <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                <span>⏳</span> Pending Admin &amp; Canteen Staff Requests ({{ pending_account_approvals|default([])|length }})
+              </h3>
+              <p class="text-xs text-slate-500">Newly registered Admin and Canteen Staff accounts cannot sign in until approved here</p>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto rounded-xl border border-slate-100 mt-4">
+            <table id="pendingAccountsTable" class="w-full text-left text-xs">
+              <thead class="bg-purple-50 text-purple-900 font-bold">
+                <tr>
+                  <th class="px-4 py-3">Requested Role</th>
+                  <th class="px-4 py-3">Applicant Name</th>
+                  <th class="px-4 py-3">Email Address</th>
+                  <th class="px-4 py-3">Contact #</th>
+                  <th class="px-4 py-3">Registered At</th>
+                  <th class="px-4 py-3 text-center">Decision</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                {% for req in pending_account_approvals|default([]) %}
+                <tr class="hover:bg-purple-50/40 transition">
+                  <td class="px-4 py-3 whitespace-nowrap">
+                    {% if req.account_type == 'admin' %}
+                      <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">🛡️ Admin</span>
+                    {% else %}
+                      <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800">👨‍🍳 Canteen Staff</span>
+                    {% endif %}
+                  </td>
+                  <td class="px-4 py-3 font-bold text-slate-900">{{ req.full_name }}</td>
+                  <td class="px-4 py-3 font-mono text-slate-600">{{ req.email }}</td>
+                  <td class="px-4 py-3 text-slate-600">{{ req.contact_number }}</td>
+                  <td class="px-4 py-3 text-slate-500 whitespace-nowrap">{{ req.created_at }}</td>
+                  <td class="px-4 py-3 text-center space-x-1.5 whitespace-nowrap">
+                    {% if admin.is_main_admin %}
+                      <button type="button" onclick="handleAccountApproval('{{ req.account_type }}', {{ req.account_id }}, 'approve', this)" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-xs transition active:scale-95 text-[11px]">
+                        ✓ Approve
+                      </button>
+                      <button type="button" onclick="handleAccountApproval('{{ req.account_type }}', {{ req.account_id }}, 'reject', this)" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg shadow-xs transition active:scale-95 text-[11px]">
+                        ✕ Reject
+                      </button>
+                    {% else %}
+                      <span class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-500 text-[10px] font-bold">🔒 Main Admin Only</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="6" class="px-4 py-8 text-center text-slate-400">
+                    <span class="text-xl block mb-1">✅</span>
+                    No pending Admin or Staff registrations awaiting approval.
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Table 2: Complete Admin & Canteen Staff Accounts Registry -->
+        <div class="bg-white rounded-2xl ring-1 ring-purple-100 shadow-md p-5 sm:p-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-4">
+            <div>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-purple-700">03 • Active Personnel Directory</span>
+              <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                <span>👥</span> Registered Admins &amp; Canteen Staff ({{ (all_admins|default([])|length) + (all_staff|default([])|length) }})
+              </h3>
+              <p class="text-xs text-slate-500">Manage account approvals, access revocation, and Main Administrator privileges</p>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto rounded-xl border border-slate-100 mt-4">
+            <table id="personnelAccountsTable" class="w-full text-left text-xs">
+              <thead class="bg-purple-50 text-purple-900 font-bold">
+                <tr>
+                  <th class="px-4 py-3">Role / Tier</th>
+                  <th class="px-4 py-3">Full Name</th>
+                  <th class="px-4 py-3">Email Address</th>
+                  <th class="px-4 py-3">Status</th>
+                  <th class="px-4 py-3">Registered At</th>
+                  <th class="px-4 py-3 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                {% for a in all_admins|default([]) %}
+                {% set ast = (a.status or 'approved')|lower %}
+                <tr class="hover:bg-purple-50/40 transition">
+                  <td class="px-4 py-3 whitespace-nowrap">
+                    {% if a.is_main_admin %}
+                      <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-200">👑 Main Admin</span>
+                    {% else %}
+                      <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">🛡️ Standard Admin</span>
+                    {% endif %}
+                  </td>
+                  <td class="px-4 py-3 font-bold text-slate-900">
+                    {{ a.full_name }}
+                    {% if a.admin_id == admin.admin_id %}
+                      <span class="ml-1 text-[10px] text-purple-600 font-semibold">(You)</span>
+                    {% endif %}
+                  </td>
+                  <td class="px-4 py-3 font-mono text-slate-600">{{ a.email }}</td>
+                  <td class="px-4 py-3">
+                    {% if ast == 'approved' %}
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">Approved</span>
+                    {% elif ast == 'pending' %}
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800">Pending</span>
+                    {% else %}
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-100 text-rose-700">Rejected</span>
+                    {% endif %}
+                  </td>
+                  <td class="px-4 py-3 text-slate-500 whitespace-nowrap">{{ a.created_at }}</td>
+                  <td class="px-4 py-3 text-center space-x-1 whitespace-nowrap">
+                    {% if admin.is_main_admin %}
+                      {% if a.admin_id == admin.admin_id %}
+                        <span class="text-[11px] text-slate-400 italic">Current Main Admin</span>
+                      {% else %}
+                        {% if ast != 'approved' %}
+                          <button type="button" onclick="handleAccountApproval('admin', {{ a.admin_id }}, 'approve', this)" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition">Approve</button>
+                        {% endif %}
+                        {% if ast == 'approved' %}
+                          {% if a.is_main_admin %}
+                            <button type="button" onclick="handleAccountApproval('admin', {{ a.admin_id }}, 'demote_regular', this)" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-[10px] transition">Demote</button>
+                          {% else %}
+                            <button type="button" onclick="handleAccountApproval('admin', {{ a.admin_id }}, 'promote_main', this)" class="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold rounded-lg text-[10px] transition">Make Main</button>
+                          {% endif %}
+                        {% endif %}
+                        {% if ast != 'rejected' %}
+                          <button type="button" onclick="handleAccountApproval('admin', {{ a.admin_id }}, 'reject', this)" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-lg text-[10px] transition">Revoke</button>
+                        {% endif %}
+                      {% endif %}
+                    {% else %}
+                      <span class="text-[10px] text-slate-400">🔒 Main Admin Only</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+
+                {% for st in all_staff|default([]) %}
+                {% set sst = (st.status or 'approved')|lower %}
+                <tr class="hover:bg-purple-50/40 transition">
+                  <td class="px-4 py-3 whitespace-nowrap">
+                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800">👨‍🍳 Canteen Staff</span>
+                  </td>
+                  <td class="px-4 py-3 font-bold text-slate-900">{{ st.full_name }}</td>
+                  <td class="px-4 py-3 font-mono text-slate-600">{{ st.email }}</td>
+                  <td class="px-4 py-3">
+                    {% if sst == 'approved' %}
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">Approved</span>
+                    {% elif sst == 'pending' %}
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800">Pending</span>
+                    {% else %}
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-100 text-rose-700">Rejected</span>
+                    {% endif %}
+                  </td>
+                  <td class="px-4 py-3 text-slate-500 whitespace-nowrap">{{ st.created_at }}</td>
+                  <td class="px-4 py-3 text-center space-x-1 whitespace-nowrap">
+                    {% if admin.is_main_admin %}
+                      {% if sst != 'approved' %}
+                        <button type="button" onclick="handleAccountApproval('staff', {{ st.staff_id }}, 'approve', this)" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition">Approve</button>
+                      {% endif %}
+                      {% if sst != 'rejected' %}
+                        <button type="button" onclick="handleAccountApproval('staff', {{ st.staff_id }}, 'reject', this)" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-lg text-[10px] transition">Revoke</button>
+                      {% endif %}
+                    {% else %}
+                      <span class="text-[10px] text-slate-400">🔒 Main Admin Only</span>
+                    {% endif %}
+                  </td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -2586,6 +2817,7 @@
     // 🔄 ADMIN LIVE REAL-TIME SYNC ENGINE (Zero-Refresh)
     // ==========================================
     let lastAdminPendingCount = {{ pending_topups|length }};
+    let lastPendingAccountsCount = {{ pending_account_approvals|default([])|length }};
     let isSyncingAdmin = false;
 
     function playNotificationChime() {
@@ -2641,6 +2873,22 @@
         const headerBadgeEl = document.getElementById("headerPendingQuickBadge");
         if (headerBadgeEl) {
           headerBadgeEl.textContent = data.pending_count;
+        }
+
+        if (data.pending_accounts_count !== undefined) {
+          const acctBadgeEl = document.getElementById("adminPendingAccountsBadge");
+          if (acctBadgeEl) {
+            acctBadgeEl.textContent = data.pending_accounts_count;
+            if (data.pending_accounts_count > 0) {
+              acctBadgeEl.classList.remove("hidden");
+            } else {
+              acctBadgeEl.classList.add("hidden");
+            }
+          }
+          if (data.pending_accounts_count > lastPendingAccountsCount) {
+            showToast(`🛡️ New Admin/Staff account registration awaiting approval!`, "info");
+          }
+          lastPendingAccountsCount = data.pending_accounts_count;
         }
 
         // 3. Detect new incoming top-ups
@@ -2804,6 +3052,56 @@
           btnEl.textContent = "Undo Top-Up";
         }
         showToast("Error reversing transaction", "error");
+      });
+    }
+
+    // --- Main Admin Account Approval & Access Control ---
+    function handleAccountApproval(accountType, accountId, action, btnEl) {
+      const actionLabels = {
+        approve: "approve",
+        reject: "reject/revoke access for",
+        promote_main: "promote to Main Administrator",
+        demote_regular: "demote to Standard Administrator"
+      };
+      if (action !== "approve") {
+        if (!confirm(`Are you sure you want to ${actionLabels[action] || action} this ${accountType} account?`)) return;
+      }
+
+      const origText = btnEl ? btnEl.textContent : "";
+      if (btnEl) {
+        btnEl.disabled = true;
+        btnEl.classList.add("opacity-60", "cursor-not-allowed");
+        btnEl.textContent = "Updating...";
+      }
+
+      fetch("/admin/account_approval", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify({ account_type: accountType, account_id: accountId, action: action })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          showToast(data.message || "Account updated!", "success");
+          setTimeout(() => {
+            window.location.href = window.location.pathname + "?section=accountApprovalsSection";
+          }, 700);
+        } else {
+          if (btnEl) {
+            btnEl.disabled = false;
+            btnEl.classList.remove("opacity-60", "cursor-not-allowed");
+            btnEl.textContent = origText;
+          }
+          showToast(data.message || "Failed to update account.", "error");
+        }
+      })
+      .catch(() => {
+        if (btnEl) {
+          btnEl.disabled = false;
+          btnEl.classList.remove("opacity-60", "cursor-not-allowed");
+          btnEl.textContent = origText;
+        }
+        showToast("Network error processing approval.", "error");
       });
     }
 
@@ -3361,6 +3659,8 @@
           switchNavSection("transactionsSection");
         } else if (targetSec === "topups" || targetSec === "pending") {
           switchNavSection("topupsSection");
+        } else if (targetSec === "approvals" || targetSec === "accounts") {
+          switchNavSection("accountApprovalsSection");
         } else if (document.getElementById(targetSec)) {
           switchNavSection(targetSec);
         }

@@ -379,12 +379,20 @@ def _get_logged_in_staff():
         conn = get_connection()
         cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
         if staff_id:
-            cursor.execute("SELECT staff_id, full_name, email, contact_number, created_at FROM staff WHERE staff_id=%s", (staff_id,))
+            cursor.execute(
+                "SELECT staff_id, full_name, email, contact_number, created_at, COALESCE(status, 'approved') AS status FROM staff WHERE staff_id=%s",
+                (staff_id,),
+            )
         else:
-            cursor.execute("SELECT staff_id, full_name, email, contact_number, created_at FROM staff WHERE email=%s", (staff_email,))
+            cursor.execute(
+                "SELECT staff_id, full_name, email, contact_number, created_at, COALESCE(status, 'approved') AS status FROM staff WHERE email=%s",
+                (staff_email,),
+            )
         staff = cursor.fetchone()
         conn.close()
         if staff:
+            if str(staff.get("status") or "approved").strip().lower() != "approved":
+                return None
             session["staff_id"] = staff["staff_id"]
             session["staff_email"] = staff["email"]
         return staff
@@ -403,14 +411,23 @@ def _get_logged_in_admin():
         conn = get_connection()
         cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
         if admin_id:
-            cursor.execute("SELECT admin_id, full_name, email, contact_number FROM admins WHERE admin_id=%s", (admin_id,))
+            cursor.execute(
+                "SELECT admin_id, full_name, email, contact_number, COALESCE(status, 'approved') AS status, COALESCE(is_main_admin, 0) AS is_main_admin FROM admins WHERE admin_id=%s",
+                (admin_id,),
+            )
         else:
-            cursor.execute("SELECT admin_id, full_name, email, contact_number FROM admins WHERE email=%s", (admin_email,))
+            cursor.execute(
+                "SELECT admin_id, full_name, email, contact_number, COALESCE(status, 'approved') AS status, COALESCE(is_main_admin, 0) AS is_main_admin FROM admins WHERE email=%s",
+                (admin_email,),
+            )
         admin = cursor.fetchone()
         conn.close()
         if admin:
+            if str(admin.get("status") or "approved").strip().lower() != "approved":
+                return None
             session["admin_id"] = admin["admin_id"]
             session["admin_email"] = admin["email"]
+            session["is_main_admin"] = int(admin.get("is_main_admin") or 0)
         return admin
     except Exception:
         return None
@@ -1486,21 +1503,64 @@ def signup_admin():
             conn = get_connection()
             cursor = conn.cursor()
             cursor.execute(
+                "SELECT admin_id, LOWER(COALESCE(status, 'approved')) FROM admins WHERE LOWER(email)=LOWER(%s)",
+                (email,),
+            )
+            existing = cursor.fetchone()
+            if existing:
+                ex_id, ex_status = existing[0], str(existing[1] or "approved").lower()
+                if ex_status == "pending":
+                    conn.close()
+                    flash("⏳ An Admin registration for this email is already pending approval by the Main Administrator.", "info")
+                    return redirect(url_for("signin_admin"))
+                elif ex_status == "approved":
+                    conn.close()
+                    flash("⚠️ An active Admin account with this email already exists. Please sign in.", "error")
+                    return redirect(url_for("signin_admin"))
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE admins
+                        SET full_name=%s, contact_number=%s, password=%s, status='pending', is_main_admin=0,
+                            security_q1=%s, security_a1=%s, security_q2=%s, security_a2=%s,
+                            security_q3=%s, security_a3=%s
+                        WHERE admin_id=%s
+                        """,
+                        (
+                            full_name, contact_number, hashed_pw,
+                            security_q1, security_a1, security_q2, security_a2,
+                            security_q3, security_a3, ex_id,
+                        ),
+                    )
+                    conn.commit()
+                    conn.close()
+                    flash("✅ Admin registration re-submitted! Your account is pending approval by the Main Administrator.", "success")
+                    return redirect(url_for("signin_admin"))
+
+            cursor.execute("SELECT COUNT(*) FROM admins WHERE LOWER(COALESCE(status, 'approved')) = 'approved'")
+            approved_count = (cursor.fetchone() or [0])[0] or 0
+            initial_status = "approved" if int(approved_count) == 0 else "pending"
+            initial_main = 1 if int(approved_count) == 0 else 0
+
+            cursor.execute(
                 """
-                INSERT INTO admins (full_name, contact_number, email, password,
+                INSERT INTO admins (full_name, contact_number, email, password, status, is_main_admin,
                                     security_q1, security_a1, security_q2, security_a2,
                                     security_q3, security_a3)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """,
                 (
-                    full_name, contact_number, email, hashed_pw,
+                    full_name, contact_number, email, hashed_pw, initial_status, initial_main,
                     security_q1, security_a1, security_q2, security_a2,
                     security_q3, security_a3,
                 ),
             )
             conn.commit()
             conn.close()
-            flash("Admin account created successfully. Please log in.", "success")
+            if initial_status == "approved":
+                flash("Main Admin account created successfully. Please log in.", "success")
+            else:
+                flash("✅ Admin registration submitted! Your account is pending approval by the Main Administrator before you can sign in.", "success")
             return redirect(url_for("signin_admin"))
         except Exception as e:
             flash(f"Database error: {str(e)}", "error")
@@ -1533,11 +1593,46 @@ def signup_staff():
             conn = get_connection()
             cursor = conn.cursor()
             cursor.execute(
+                "SELECT staff_id, LOWER(COALESCE(status, 'approved')) FROM staff WHERE LOWER(email)=LOWER(%s)",
+                (email,),
+            )
+            existing = cursor.fetchone()
+            if existing:
+                ex_id, ex_status = existing[0], str(existing[1] or "approved").lower()
+                if ex_status == "pending":
+                    conn.close()
+                    flash("⏳ A Canteen Staff registration for this email is already pending approval by the Main Administrator.", "info")
+                    return redirect(url_for("signin_staff"))
+                elif ex_status == "approved":
+                    conn.close()
+                    flash("⚠️ An active Canteen Staff account with this email already exists. Please sign in.", "error")
+                    return redirect(url_for("signin_staff"))
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE staff
+                        SET full_name=%s, contact_number=%s, password=%s, status='pending',
+                            security_q1=%s, security_a1=%s, security_q2=%s, security_a2=%s,
+                            security_q3=%s, security_a3=%s
+                        WHERE staff_id=%s
+                        """,
+                        (
+                            full_name, contact_number, hashed_pw,
+                            security_q1, security_a1, security_q2, security_a2,
+                            security_q3, security_a3, ex_id,
+                        ),
+                    )
+                    conn.commit()
+                    conn.close()
+                    flash("✅ Canteen Staff registration re-submitted! Your account is pending approval by the Main Administrator.", "success")
+                    return redirect(url_for("signin_staff"))
+
+            cursor.execute(
                 """
-                INSERT INTO staff (full_name, contact_number, email, password,
+                INSERT INTO staff (full_name, contact_number, email, password, status,
                                    security_q1, security_a1, security_q2, security_a2,
                                    security_q3, security_a3)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (%s,%s,%s,%s,'pending',%s,%s,%s,%s,%s,%s)
                 """,
                 (
                     full_name, contact_number, email, hashed_pw,
@@ -1547,7 +1642,7 @@ def signup_staff():
             )
             conn.commit()
             conn.close()
-            flash("Staff account created successfully. Please log in.", "success")
+            flash("✅ Canteen Staff registration submitted! Your account is pending approval by the Main Administrator before you can sign in.", "success")
             return redirect(url_for("signin_staff"))
         except Exception as e:
             flash(f"Database error: {str(e)}", "error")
@@ -1587,7 +1682,7 @@ def _attempt_role_login(email_input, password, preferred_role="student"):
 
     elif preferred_role == "staff":
         cursor.execute(
-            "SELECT staff_id, email, password FROM staff WHERE LOWER(email)=LOWER(%s)",
+            "SELECT staff_id, email, password, COALESCE(status, 'approved') FROM staff WHERE LOWER(email)=LOWER(%s)",
             (email_clean,),
         )
         row = cursor.fetchone()
@@ -1597,6 +1692,14 @@ def _attempt_role_login(email_input, password, preferred_role="student"):
             return redirect(url_for("signin_staff"))
         if not verify_user_password(row[2], password):
             flash(f"❌ Incorrect password for {email_clean}. Please check your password or use Forgot Password.", "error")
+            return redirect(url_for("signin_staff"))
+
+        staff_status = str(row[3] or "approved").strip().lower()
+        if staff_status == "pending":
+            flash("⏳ Account Pending Approval: Your Canteen Staff registration is awaiting approval from the Main Administrator.", "error")
+            return redirect(url_for("signin_staff"))
+        if staff_status != "approved":
+            flash("🚫 Access Denied: Your Canteen Staff account registration was rejected or deactivated by the Main Administrator.", "error")
             return redirect(url_for("signin_staff"))
 
         session.clear()
@@ -1610,7 +1713,7 @@ def _attempt_role_login(email_input, password, preferred_role="student"):
 
     elif preferred_role == "admin":
         cursor.execute(
-            "SELECT admin_id, email, password FROM admins WHERE LOWER(email)=LOWER(%s)",
+            "SELECT admin_id, email, password, COALESCE(status, 'approved'), COALESCE(is_main_admin, 0) FROM admins WHERE LOWER(email)=LOWER(%s)",
             (email_clean,),
         )
         row = cursor.fetchone()
@@ -1622,10 +1725,19 @@ def _attempt_role_login(email_input, password, preferred_role="student"):
             flash(f"❌ Incorrect password for {email_clean}. Please check your password or use Forgot Password.", "error")
             return redirect(url_for("signin_admin"))
 
+        admin_status = str(row[3] or "approved").strip().lower()
+        if admin_status == "pending":
+            flash("⏳ Account Pending Approval: Your Admin registration is awaiting approval from the Main Administrator.", "error")
+            return redirect(url_for("signin_admin"))
+        if admin_status != "approved":
+            flash("🚫 Access Denied: Your Admin account registration was rejected or deactivated by the Main Administrator.", "error")
+            return redirect(url_for("signin_admin"))
+
         session.clear()
         session["role"] = "admin"
         session["admin_id"] = row[0]
         session["admin_email"] = row[1]
+        session["is_main_admin"] = int(row[4] or 0)
         session["pending_email"] = row[1]
         generate_and_send_otp(row[1], subject="Your Admin Secure Login OTP", role="admin")
         flash("OTP sent to your email. Please verify.", "info")
@@ -3066,6 +3178,49 @@ def dashboard_admin():
     unregistered_transactions = cursor.fetchall() or []
 
 
+    cursor.execute("""
+        SELECT admin_id, full_name, email, contact_number,
+               COALESCE(status, 'approved') AS status,
+               COALESCE(is_main_admin, 0) AS is_main_admin,
+               created_at
+        FROM admins
+        ORDER BY CASE WHEN LOWER(COALESCE(status, 'approved')) = 'pending' THEN 0 ELSE 1 END, admin_id DESC
+    """)
+    all_admins = cursor.fetchall() or []
+
+    cursor.execute("""
+        SELECT staff_id, full_name, email, contact_number,
+               COALESCE(status, 'approved') AS status,
+               created_at
+        FROM staff
+        ORDER BY CASE WHEN LOWER(COALESCE(status, 'approved')) = 'pending' THEN 0 ELSE 1 END, staff_id DESC
+    """)
+    all_staff = cursor.fetchall() or []
+
+    pending_account_approvals = [
+        {
+            "account_type": "admin",
+            "account_id": a["admin_id"],
+            "full_name": a.get("full_name") or "Admin Applicant",
+            "email": a.get("email") or "",
+            "contact_number": a.get("contact_number") or "---",
+            "status": a.get("status") or "pending",
+            "created_at": a.get("created_at"),
+        }
+        for a in all_admins if str(a.get("status") or "").lower() == "pending"
+    ] + [
+        {
+            "account_type": "staff",
+            "account_id": s["staff_id"],
+            "full_name": s.get("full_name") or "Staff Applicant",
+            "email": s.get("email") or "",
+            "contact_number": s.get("contact_number") or "---",
+            "status": s.get("status") or "pending",
+            "created_at": s.get("created_at"),
+        }
+        for s in all_staff if str(s.get("status") or "").lower() == "pending"
+    ]
+
     return render_template(
         "dashboard_admin.html",
         admin=admin,  # ✅ pass the single admin record
@@ -3088,8 +3243,107 @@ def dashboard_admin():
         pending_topups=pending_topups,
         transactions=transactions,
         unregistered_transactions=unregistered_transactions,
+        all_admins=all_admins,
+        all_staff=all_staff,
+        pending_account_approvals=pending_account_approvals,
         trending_recommendations=_get_trending_canteen_recommendations(cursor)
     )
+
+
+@app.route("/admin/account_approval", methods=["POST"])
+def admin_account_approval():
+    admin = _get_logged_in_admin()
+    if not admin:
+        return jsonify({"success": False, "message": "Unauthorized. Please sign in as Admin."}), 403
+
+    if int(admin.get("is_main_admin") or 0) != 1:
+        return jsonify({
+            "success": False,
+            "message": "Access Denied: Only the Main Administrator can approve, reject, or modify Admin and Staff accounts."
+        }), 403
+
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    account_type = str(data.get("account_type") or "").strip().lower()
+    action = str(data.get("action") or "").strip().lower()
+    try:
+        account_id = int(data.get("account_id") or 0)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "message": "Invalid account ID."}), 400
+
+    if account_type not in ("admin", "staff") or action not in ("approve", "reject", "promote_main", "demote_regular") or account_id <= 0:
+        return jsonify({"success": False, "message": "Invalid approval parameters."}), 400
+
+    conn = get_connection()
+    cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
+
+    if account_type == "admin":
+        if account_id == int(admin["admin_id"]) and action in ("reject", "demote_regular"):
+            conn.close()
+            return jsonify({"success": False, "message": "You cannot reject or demote your own Main Admin account."}), 400
+
+        cursor.execute("SELECT admin_id, full_name, email, status, is_main_admin FROM admins WHERE admin_id=%s", (account_id,))
+        target = cursor.fetchone()
+        if not target:
+            conn.close()
+            return jsonify({"success": False, "message": "Admin account not found."}), 404
+
+        if action == "approve":
+            cursor.execute("UPDATE admins SET status='approved' WHERE admin_id=%s", (account_id,))
+            new_status, new_main = "approved", int(target.get("is_main_admin") or 0)
+            msg = f"Admin account for {target['full_name']} has been approved!"
+        elif action == "reject":
+            cursor.execute("UPDATE admins SET status='rejected', is_main_admin=0 WHERE admin_id=%s", (account_id,))
+            new_status, new_main = "rejected", 0
+            msg = f"Admin account for {target['full_name']} has been rejected."
+        elif action == "promote_main":
+            cursor.execute("UPDATE admins SET status='approved', is_main_admin=1 WHERE admin_id=%s", (account_id,))
+            new_status, new_main = "approved", 1
+            msg = f"{target['full_name']} has been promoted to Main Administrator."
+        else:  # demote_regular
+            cursor.execute("UPDATE admins SET is_main_admin=0 WHERE admin_id=%s", (account_id,))
+            new_status, new_main = str(target.get("status") or "approved"), 0
+            msg = f"{target['full_name']} is now a Standard Administrator."
+
+        conn.commit()
+        conn.close()
+        return jsonify({
+            "success": True,
+            "message": msg,
+            "account_type": "admin",
+            "account_id": account_id,
+            "new_status": new_status,
+            "is_main_admin": new_main
+        })
+
+    else:  # staff
+        cursor.execute("SELECT staff_id, full_name, email, status FROM staff WHERE staff_id=%s", (account_id,))
+        target = cursor.fetchone()
+        if not target:
+            conn.close()
+            return jsonify({"success": False, "message": "Staff account not found."}), 404
+
+        if action == "approve":
+            cursor.execute("UPDATE staff SET status='approved' WHERE staff_id=%s", (account_id,))
+            new_status = "approved"
+            msg = f"Canteen Staff account for {target['full_name']} has been approved!"
+        elif action == "reject":
+            cursor.execute("UPDATE staff SET status='rejected' WHERE staff_id=%s", (account_id,))
+            new_status = "rejected"
+            msg = f"Canteen Staff account for {target['full_name']} has been rejected."
+        else:
+            conn.close()
+            return jsonify({"success": False, "message": "Unsupported action for staff account."}), 400
+
+        conn.commit()
+        conn.close()
+        return jsonify({
+            "success": True,
+            "message": msg,
+            "account_type": "staff",
+            "account_id": account_id,
+            "new_status": new_status,
+            "is_main_admin": 0
+        })
 
 
 
@@ -5142,11 +5396,20 @@ def api_admin_live_sync():
 
     trending_recommendations = _get_trending_canteen_recommendations(cursor)
 
+    cursor.execute("""
+        SELECT
+            (SELECT COUNT(*) FROM admins WHERE LOWER(COALESCE(status, 'approved')) = 'pending')
+            + (SELECT COUNT(*) FROM staff WHERE LOWER(COALESCE(status, 'approved')) = 'pending')
+            AS pending_accounts_count
+    """)
+    pending_accounts_count = int((cursor.fetchone() or {}).get("pending_accounts_count") or 0)
+
     conn.close()
 
     return jsonify({
         "success": True,
         "pending_count": len(pending_list),
+        "pending_accounts_count": pending_accounts_count,
         "pending_topups": pending_list,
         "total_topups": total_topups,
         "total_sales": total_sales,

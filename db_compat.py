@@ -217,6 +217,8 @@ def init_sqlite_db(db_path):
             contact_number VARCHAR(20),
             email VARCHAR(120) UNIQUE NOT NULL,
             password VARCHAR(255) NOT NULL,
+            status VARCHAR(20) DEFAULT 'approved',
+            is_main_admin INTEGER DEFAULT 0,
             security_q1 VARCHAR(255),
             security_a1 VARCHAR(255),
             security_q2 VARCHAR(255),
@@ -233,6 +235,7 @@ def init_sqlite_db(db_path):
             email VARCHAR(120) UNIQUE NOT NULL,
             password VARCHAR(255) NOT NULL,
             staff_qr VARCHAR(255),
+            status VARCHAR(20) DEFAULT 'approved',
             security_q1 VARCHAR(255),
             security_a1 VARCHAR(255),
             security_q2 VARCHAR(255),
@@ -314,14 +317,25 @@ def init_sqlite_db(db_path):
         );
         """
     )
-    for col_def in (
-        "dynamic_qr_token VARCHAR(64) DEFAULT NULL",
-        "dynamic_qr_expires_at BIGINT DEFAULT NULL",
+    for stmt in (
+        "ALTER TABLE students ADD COLUMN dynamic_qr_token VARCHAR(64) DEFAULT NULL",
+        "ALTER TABLE students ADD COLUMN dynamic_qr_expires_at BIGINT DEFAULT NULL",
+        "ALTER TABLE admins ADD COLUMN status VARCHAR(20) DEFAULT 'approved'",
+        "ALTER TABLE admins ADD COLUMN is_main_admin INTEGER DEFAULT 0",
+        "ALTER TABLE staff ADD COLUMN status VARCHAR(20) DEFAULT 'approved'",
     ):
         try:
-            conn.execute(f"ALTER TABLE students ADD COLUMN {col_def}")
+            conn.execute(stmt)
         except Exception:
             pass
+    try:
+        conn.execute("UPDATE admins SET status = 'approved' WHERE status IS NULL OR status = ''")
+        conn.execute("UPDATE staff SET status = 'approved' WHERE status IS NULL OR status = ''")
+        cur_check = conn.execute("SELECT COUNT(*) FROM admins WHERE is_main_admin = 1 AND status = 'approved'")
+        if (cur_check.fetchone() or [0])[0] == 0:
+            conn.execute("UPDATE admins SET is_main_admin = 1 WHERE status = 'approved'")
+    except Exception:
+        pass
     try:
         conn.execute("""
             UPDATE transactions
@@ -353,6 +367,8 @@ def ensure_mysql_schema(conn):
                 contact_number VARCHAR(20),
                 email VARCHAR(120) UNIQUE NOT NULL,
                 password VARCHAR(255) NOT NULL,
+                status VARCHAR(20) DEFAULT 'approved',
+                is_main_admin TINYINT(1) DEFAULT 0,
                 security_q1 VARCHAR(255),
                 security_a1 VARCHAR(255),
                 security_q2 VARCHAR(255),
@@ -372,6 +388,7 @@ def ensure_mysql_schema(conn):
                 email VARCHAR(120) UNIQUE NOT NULL,
                 password VARCHAR(255) NOT NULL,
                 staff_qr VARCHAR(255),
+                status VARCHAR(20) DEFAULT 'approved',
                 security_q1 VARCHAR(255),
                 security_a1 VARCHAR(255),
                 security_q2 VARCHAR(255),
@@ -493,6 +510,28 @@ def ensure_mysql_schema(conn):
             pass
         try:
             cur.execute("ALTER TABLE canteen_products ADD COLUMN stock INT DEFAULT 0")
+        except Exception:
+            pass
+        try:
+            cur.execute("ALTER TABLE admins ADD COLUMN status VARCHAR(20) DEFAULT 'approved'")
+        except Exception:
+            pass
+        try:
+            cur.execute("ALTER TABLE admins ADD COLUMN is_main_admin TINYINT(1) DEFAULT 0")
+        except Exception:
+            pass
+        try:
+            cur.execute("ALTER TABLE staff ADD COLUMN status VARCHAR(20) DEFAULT 'approved'")
+        except Exception:
+            pass
+        try:
+            cur.execute("UPDATE admins SET status = 'approved' WHERE status IS NULL OR status = ''")
+            cur.execute("UPDATE staff SET status = 'approved' WHERE status IS NULL OR status = ''")
+            cur.execute("SELECT COUNT(*) FROM admins WHERE is_main_admin = 1 AND status = 'approved'")
+            cnt_row = cur.fetchone()
+            main_cnt = (list(cnt_row.values())[0] if isinstance(cnt_row, dict) else cnt_row[0]) if cnt_row else 0
+            if not main_cnt:
+                cur.execute("UPDATE admins SET is_main_admin = 1 WHERE status = 'approved'")
         except Exception:
             pass
         try:
