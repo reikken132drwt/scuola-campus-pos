@@ -326,7 +326,7 @@ def generate_fixed_qr(student_id):
                                 
 # ---------------- Upload Config ----------------
 UPLOAD_FOLDER = "static/uploads"
-ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif"}
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp", "jfif"}
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 def allowed_file(filename):
@@ -2404,6 +2404,155 @@ def staff_fixed_qr_image(staff_id):
     return send_file(qr_path, mimetype="image/png")
 
 
+@app.route("/staff/create_counter_order", methods=["POST"])
+def staff_create_counter_order():
+    staff = _get_logged_in_staff()
+    admin = _get_logged_in_admin()
+    if not staff and not admin:
+        return jsonify({"success": False, "message": "Unauthorized. Please sign in as Staff."}), 401
+
+    data = request.get_json(silent=True) or {}
+    cart_items = data.get("cart") or []
+    try:
+        amount = Decimal(str(data.get("amount") or 0))
+    except Exception:
+        amount = Decimal("0")
+
+    if amount <= 0 or not isinstance(cart_items, list) or len(cart_items) == 0:
+        return jsonify({"success": False, "message": "Add at least one item to the cart first."}), 400
+
+    parts = []
+    clean_cart = []
+    for item in cart_items:
+        if isinstance(item, dict) and item.get("name"):
+            qty = max(1, int(item.get("qty") or 1))
+            name = str(item.get("name")).strip()
+            parts.append(f"{qty}× {name}")
+            clean_cart.append({
+                "id": item.get("id"),
+                "product_id": item.get("product_id"),
+                "name": name,
+                "price": float(item.get("price") or 0),
+                "qty": qty,
+            })
+
+    if not clean_cart:
+        return jsonify({"success": False, "message": "Cart items are invalid."}), 400
+
+    items_summary = ", ".join(parts)
+    cart_json = json.dumps(clean_cart)
+    staff_id = staff["staff_id"] if staff else 1
+    order_token = f"ORDER-{staff_id}-{uuid.uuid4().hex[:8].upper()}"
+
+    conn = get_connection()
+    cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
+    try:
+        # Expire any prior unpaid pending orders on this terminal so only the active order is linked to the standee
+        cursor.execute(
+            "UPDATE pending_counter_orders SET status='cancelled' WHERE staff_id=%s AND status='pending'",
+            (staff_id,),
+        )
+        cursor.execute(
+            """
+            INSERT INTO pending_counter_orders (order_token, staff_id, amount, items_summary, cart_json, status, created_at)
+            VALUES (%s, %s, %s, %s, %s, 'pending', NOW())
+            """,
+            (order_token, staff_id, amount, items_summary, cart_json),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({
+        "success": True,
+        "order_token": order_token,
+        "staff_id": staff_id,
+        "amount": float(amount),
+        "items_summary": items_summary,
+        "qr_url": url_for("staff_order_qr_image", order_token=order_token),
+    })
+
+
+@app.route("/staff/order_qr/<order_token>")
+def staff_order_qr_image(order_token):
+    token_clean = re.sub(r"[^A-Za-z0-9_-]", "", str(order_token or ""))
+    if not token_clean:
+        return jsonify({"success": False, "message": "Invalid order token."}), 400
+    buf = io.BytesIO()
+    img = qrcode.make(token_clean)
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return send_file(buf, mimetype="image/png")
+
+
+@app.route("/staff/counter_order_status/<order_token>")
+def staff_counter_order_status(order_token):
+    staff = _get_logged_in_staff()
+    admin = _get_logged_in_admin()
+    if not staff and not admin:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    conn = get_connection()
+    cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
+    try:
+        cursor.execute(
+            """
+            SELECT o.order_id, o.order_token, o.staff_id, o.amount, o.items_summary, o.status,
+                   o.paid_by_student_id, o.paid_by_name, o.transaction_id, o.paid_at,
+                   st.school_id, st.email AS student_email, st.balance AS student_balance,
+                   t.previous_balance, t.new_balance, t.created_at AS txn_created_at
+            FROM pending_counter_orders o
+            LEFT JOIN students st ON o.paid_by_student_id = st.student_id
+            LEFT JOIN transactions t ON o.transaction_id = t.transaction_id
+            WHERE o.order_token = %s
+            """,
+            (order_token,),
+        )
+        order = cursor.fetchone()
+    finally:
+        conn.close()
+
+    if not order:
+        return jsonify({"success": False, "status": "not_found"}), 404
+
+    return jsonify({
+        "success": True,
+        "order_token": order["order_token"],
+        "status": order["status"],
+        "amount": float(order["amount"] or 0),
+        "items_summary": order.get("items_summary") or "Canteen Purchase",
+        "student_name": order.get("paid_by_name") or "Student",
+        "school_id": order.get("school_id") or "",
+        "student_email": order.get("student_email") or "",
+        "transaction_id": order.get("transaction_id"),
+        "previous_balance": float(order["previous_balance"]) if order.get("previous_balance") is not None else None,
+        "new_balance": float(order["new_balance"]) if order.get("new_balance") is not None else (
+            float(order["student_balance"]) if order.get("student_balance") is not None else None
+        ),
+        "paid_at": str(order.get("txn_created_at") or order.get("paid_at") or now_pst().strftime("%Y-%m-%d %H:%M:%S")),
+    })
+
+
+@app.route("/staff/cancel_counter_order", methods=["POST"])
+def staff_cancel_counter_order():
+    staff = _get_logged_in_staff()
+    admin = _get_logged_in_admin()
+    if not staff and not admin:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    order_token = str(data.get("order_token") or "").strip()
+    if order_token:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE pending_counter_orders SET status='cancelled' WHERE order_token=%s AND status='pending'",
+            (order_token,),
+        )
+        conn.commit()
+        conn.close()
+    return jsonify({"success": True})
+
+
 @app.route("/scan_staff_qr", methods=["POST"])
 def scan_staff_qr():
     data = request.get_json() if request.is_json else (request.form or {})
@@ -2412,28 +2561,88 @@ def scan_staff_qr():
     if not qr_value:
         return jsonify(success=False, message="Empty QR code"), 400
 
-    parsed_id = qr_value
-    if qr_value.upper().startswith("STAFF-"):
-        parsed_id = qr_value.split("-", 1)[1].strip()
-
     conn = get_connection()
     cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
-    cursor.execute(
-        """SELECT staff_id, full_name, email, contact_number
-           FROM staff
-           WHERE staff_qr=%s OR CAST(staff_id AS CHAR)=%s OR email=%s""",
-        (qr_value, parsed_id, qr_value),
-    )
-    staff = cursor.fetchone()
-    conn.close()
+    active_order = None
+    staff = None
+
+    try:
+        # 1. Check if QR is an itemized Counter Order QR ("ORDER-<staff_id>-<token>")
+        if qr_value.upper().startswith("ORDER-"):
+            cursor.execute(
+                """
+                SELECT order_id, order_token, staff_id, amount, items_summary, status
+                FROM pending_counter_orders
+                WHERE UPPER(order_token) = UPPER(%s)
+                """,
+                (qr_value,),
+            )
+            order_row = cursor.fetchone()
+            if not order_row:
+                return jsonify(success=False, message="Order QR not found or invalid."), 404
+            if str(order_row.get("status") or "").lower() == "paid":
+                return jsonify(success=False, message="This Order QR has already been paid!"), 400
+            if str(order_row.get("status") or "").lower() != "pending":
+                return jsonify(success=False, message="This Order QR was cancelled or expired. Ask the cashier to display a new order."), 400
+
+            active_order = {
+                "order_id": order_row["order_id"],
+                "order_token": order_row["order_token"],
+                "amount": float(order_row["amount"] or 0),
+                "items_summary": order_row.get("items_summary") or "Canteen Order",
+            }
+            cursor.execute(
+                "SELECT staff_id, full_name, email, contact_number FROM staff WHERE staff_id=%s",
+                (order_row["staff_id"],),
+            )
+            staff = cursor.fetchone()
+        else:
+            # 2. Static Printed Standee QR ("STAFF-<id>", "<id>", or email)
+            parsed_id = qr_value
+            if qr_value.upper().startswith("STAFF-"):
+                parsed_id = qr_value.split("-", 1)[1].strip()
+
+            cursor.execute(
+                """SELECT staff_id, full_name, email, contact_number
+                   FROM staff
+                   WHERE staff_qr=%s OR CAST(staff_id AS CHAR)=%s OR email=%s""",
+                (qr_value, parsed_id, qr_value),
+            )
+            staff = cursor.fetchone()
+
+            # Automatically attach any active pending counter order queued on this staff's terminal!
+            if staff:
+                cursor.execute(
+                    """
+                    SELECT order_id, order_token, amount, items_summary
+                    FROM pending_counter_orders
+                    WHERE staff_id=%s AND status='pending'
+                    ORDER BY order_id DESC LIMIT 1
+                    """,
+                    (staff["staff_id"],),
+                )
+                order_row = cursor.fetchone()
+                if order_row:
+                    active_order = {
+                        "order_id": order_row["order_id"],
+                        "order_token": order_row["order_token"],
+                        "amount": float(order_row["amount"] or 0),
+                        "items_summary": order_row.get("items_summary") or "Canteen Order",
+                    }
+    finally:
+        conn.close()
 
     if staff:
-        return jsonify(success=True, staff={
-            "staff_id": staff["staff_id"],
-            "full_name": staff["full_name"],
-            "email": staff["email"],
-            "contact_number": staff.get("contact_number", ""),
-        })
+        return jsonify(
+            success=True,
+            staff={
+                "staff_id": staff["staff_id"],
+                "full_name": staff["full_name"],
+                "email": staff["email"],
+                "contact_number": staff.get("contact_number", ""),
+            },
+            active_order=active_order,
+        )
     else:
         return jsonify(success=False, message="Staff member not found. Please scan an authorized staff QR."), 400
 
@@ -2447,6 +2656,7 @@ def student_pay_staff():
 
     data = request.get_json() if request.is_json else (request.form or {})
     staff_id = data.get("staff_id")
+    order_token = str(data.get("order_token") or "").strip()
     try:
         amount = Decimal(str(data.get("amount") or 0))
     except Exception:
@@ -2466,33 +2676,87 @@ def student_pay_staff():
         conn.close()
         return jsonify(success=False, message="Incorrect 4-digit PIN. Transaction cancelled."), 400
 
+    # 2. If linked to a pending counter order, validate & lock exact order total and items
+    cart_items = []
+    linked_order = None
+    if order_token:
+        cursor.execute(
+            "SELECT * FROM pending_counter_orders WHERE UPPER(order_token)=UPPER(%s)",
+            (order_token,),
+        )
+        linked_order = cursor.fetchone()
+        if not linked_order:
+            conn.close()
+            return jsonify(success=False, message="Linked counter order not found."), 404
+        if str(linked_order.get("status") or "").lower() != "pending":
+            conn.close()
+            return jsonify(success=False, message="This order has already been paid or cancelled."), 400
+        amount = Decimal(str(linked_order["amount"] or 0))
+        remarks = str(linked_order.get("items_summary") or remarks).strip()
+        try:
+            cart_items = json.loads(linked_order.get("cart_json") or "[]")
+        except Exception:
+            cart_items = []
+
     current_balance = Decimal(str(student["balance"] or 0))
     if current_balance < amount:
         conn.close()
         return jsonify(success=False, message=f"Insufficient wallet balance. You only have ₱{current_balance:.2f}."), 400
 
-    # 2. Verify staff member
+    # 3. Verify staff member
     cursor.execute("SELECT staff_id, full_name FROM staff WHERE staff_id=%s", (staff_id,))
     staff = cursor.fetchone()
     if not staff:
         conn.close()
         return jsonify(success=False, message="Staff member not found."), 404
 
-    # 3. Deduct balance and record transaction
+    # 4. Deduct balance, record itemized transaction, deduct product stock, and mark counter order paid
     new_balance = current_balance - amount
     cursor.execute("UPDATE students SET balance=%s WHERE student_id=%s", (new_balance, student["student_id"]))
     cursor.execute("""
-        INSERT INTO transactions (student_id, staff_id, amount, previous_balance, new_balance,
+        INSERT INTO transactions (student_id, customer_name, staff_id, amount, previous_balance, new_balance,
                                   status, type, payment_mode, remarks, created_at)
-        VALUES (%s, %s, %s, %s, %s, 'completed', 'purchase', 'cashless', %s, NOW())
-    """, (student["student_id"], staff["staff_id"], amount, current_balance, new_balance, remarks))
+        VALUES (%s, %s, %s, %s, %s, %s, 'completed', 'purchase', 'wallet', %s, NOW())
+    """, (student["student_id"], student["full_name"], staff["staff_id"], amount, current_balance, new_balance, remarks))
+    txn_id = getattr(cursor, "lastrowid", None)
+
+    if cart_items:
+        _deduct_canteen_product_stock(cursor, cart_items)
+
+    if linked_order:
+        cursor.execute(
+            """
+            UPDATE pending_counter_orders
+            SET status='paid', paid_by_student_id=%s, paid_by_name=%s, transaction_id=%s, paid_at=NOW()
+            WHERE order_id=%s
+            """,
+            (student["student_id"], student["full_name"], txn_id, linked_order["order_id"]),
+        )
+
     conn.commit()
     conn.close()
+
+    student_email = str(student.get("email") or student.get("parent_email") or "").strip()
+    if student_email:
+        send_student_pos_receipt_email(
+            to_email=student_email,
+            txn_id=txn_id or "POS",
+            customer_name=student["full_name"],
+            school_id=student.get("school_id") or "",
+            items_summary=remarks,
+            amount=amount,
+            payment_mode="wallet",
+            prev_balance=current_balance,
+            new_balance=new_balance,
+            staff_name=staff["full_name"],
+        )
 
     return jsonify(
         success=True,
         message=f"₱{amount:.2f} successfully paid to {staff['full_name']}!",
-        new_balance=float(new_balance)
+        new_balance=float(new_balance),
+        remarks=remarks,
+        transaction_id=txn_id,
     )
 
 
@@ -5958,15 +6222,43 @@ def api_student_update_profile():
     file = request.files.get("profile_pic")
     remove_photo = str(data.get("remove_photo") or "").strip().lower() == "true"
     if file and file.filename and allowed_file(file.filename):
+        import base64
+        from PIL import Image, ImageOps
+
         os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+        raw_bytes = file.read()
         ext = file.filename.rsplit(".", 1)[1].lower()
-        new_pic_filename = f"student_{student['student_id']}_{int(time.time())}.{ext}"
+        new_pic_filename = f"student_{student['student_id']}_{int(time.time())}.jpg"
         filepath = os.path.join(app.config["UPLOAD_FOLDER"], new_pic_filename)
-        file.save(filepath)
+        pic_data_uri = None
+
+        try:
+            img = Image.open(io.BytesIO(raw_bytes))
+            img = ImageOps.exif_transpose(img)
+            img.thumbnail((320, 320))
+            if img.mode in ("RGBA", "LA", "P"):
+                img = img.convert("RGB")
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=85, optimize=True)
+            opt_bytes = buf.getvalue()
+            with open(filepath, "wb") as f_out:
+                f_out.write(opt_bytes)
+            pic_data_uri = "data:image/jpeg;base64," + base64.b64encode(opt_bytes).decode("ascii")
+        except Exception:
+            new_pic_filename = f"student_{student['student_id']}_{int(time.time())}.{ext}"
+            filepath = os.path.join(app.config["UPLOAD_FOLDER"], new_pic_filename)
+            with open(filepath, "wb") as f_out:
+                f_out.write(raw_bytes)
+            mime = f"image/{'jpeg' if ext in ('jpg', 'jpeg', 'jfif') else ext}"
+            pic_data_uri = f"data:{mime};base64," + base64.b64encode(raw_bytes).decode("ascii")
+
         updates.append("profile_pic = %s")
         params.append(new_pic_filename)
+        updates.append("profile_pic_data = %s")
+        params.append(pic_data_uri)
     elif remove_photo:
         updates.append("profile_pic = NULL")
+        updates.append("profile_pic_data = NULL")
 
     params.append(student["student_id"])
     sql = f"UPDATE students SET {', '.join(updates)} WHERE student_id = %s"
@@ -5993,9 +6285,48 @@ def api_student_update_profile():
             "contact_number": updated_st.get("contact_number"),
             "parent_email": updated_st.get("parent_email"),
             "email": updated_st.get("email"),
-            "profile_pic": updated_st.get("profile_pic")
+            "profile_pic": updated_st.get("profile_pic"),
+            "has_avatar": bool(updated_st.get("profile_pic") or updated_st.get("profile_pic_data")),
         }
     })
+
+
+@app.route("/student/avatar/<int:student_id>")
+def student_avatar(student_id):
+    """Serve student profile picture persistently from DB (surviving Render restarts) or disk fallback."""
+    import base64
+    conn = get_connection()
+    cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
+    try:
+        cursor.execute("SELECT profile_pic, profile_pic_data FROM students WHERE student_id=%s", (student_id,))
+        row = cursor.fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        return "", 404
+
+    data_uri = row.get("profile_pic_data")
+    if data_uri and isinstance(data_uri, str) and data_uri.startswith("data:image/") and ";base64," in data_uri:
+        try:
+            header, b64_str = data_uri.split(";base64,", 1)
+            mime = header.replace("data:", "", 1)
+            img_bytes = base64.b64decode(b64_str)
+            resp = send_file(io.BytesIO(img_bytes), mimetype=mime)
+            resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+            return resp
+        except Exception:
+            pass
+
+    pic_name = row.get("profile_pic")
+    if pic_name:
+        disk_path = os.path.join(app.config["UPLOAD_FOLDER"], pic_name)
+        if os.path.exists(disk_path):
+            resp = send_file(disk_path)
+            resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+            return resp
+
+    return "", 404
 
 
 # ---------------- Run App ----------------

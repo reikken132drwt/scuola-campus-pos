@@ -84,8 +84,8 @@
         <!-- Interactive Student Profile Pill / Button (Click to open Profile Modal) -->
         <button type="button" onclick="openStudentProfileModal()" class="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-white/80 hover:bg-white text-slate-800 border border-white/70 shadow-sm transition active:scale-95 group cursor-pointer" title="Edit Profile & Security">
           <div id="headerAvatar" class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-600 to-pink-600 text-white flex items-center justify-center font-extrabold text-xs shadow-sm shrink-0 overflow-hidden ring-1 ring-white/60">
-            {% if student.profile_pic %}
-              <img id="headerAvatarImg" src="{{ url_for('static', filename='uploads/' + student.profile_pic) }}" alt="Avatar" class="w-full h-full object-cover">
+            {% if student.profile_pic or student.profile_pic_data %}
+              <img id="headerAvatarImg" src="{{ url_for('student_avatar', student_id=student.student_id, v=student.profile_pic or '1') }}" alt="Avatar" class="w-full h-full object-cover" onerror="this.classList.add('hidden'); var i=document.getElementById('headerAvatarInitial'); if(i) i.classList.remove('hidden');">
               <span id="headerAvatarInitial" class="hidden">{{ student.full_name[:1]|upper }}</span>
             {% else %}
               <img id="headerAvatarImg" src="" alt="Avatar" class="w-full h-full object-cover hidden">
@@ -156,8 +156,8 @@
         <div class="flex items-start justify-between gap-3">
           <div class="flex items-start gap-3.5 min-w-0">
             <div id="walletCardAvatar" class="w-14 h-14 rounded-2xl bg-white/20 border-2 border-white/40 shadow-inner overflow-hidden flex items-center justify-center shrink-0">
-              {% if student.profile_pic %}
-                <img id="walletCardAvatarImg" src="{{ url_for('static', filename='uploads/' + student.profile_pic) }}" alt="Photo" class="w-full h-full object-cover">
+              {% if student.profile_pic or student.profile_pic_data %}
+                <img id="walletCardAvatarImg" src="{{ url_for('student_avatar', student_id=student.student_id, v=student.profile_pic or '1') }}" alt="Photo" class="w-full h-full object-cover" onerror="this.classList.add('hidden'); var i=document.getElementById('walletCardAvatarInitial'); if(i) i.classList.remove('hidden');">
                 <span id="walletCardAvatarInitial" class="hidden text-xl font-black text-white">{{ student.full_name[:1]|upper }}</span>
               {% else %}
                 <img id="walletCardAvatarImg" src="" alt="Photo" class="w-full h-full object-cover hidden">
@@ -1148,6 +1148,22 @@
         const box = document.getElementById("scannedStaffResult");
         box.classList.remove("hidden");
         if (data.success && data.staff) {
+          const order = data.active_order || null;
+          const orderToken = order ? order.order_token : "";
+          const prefillAmt = order ? Number(order.amount).toFixed(2) : "";
+          const prefillItems = order ? order.items_summary : "Canteen Purchase";
+
+          const orderBannerHtml = order ? `
+            <div class="p-3 bg-purple-50 border border-purple-200 rounded-xl space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] font-extrabold uppercase tracking-wider text-purple-800">🧾 Itemized Canteen Order</span>
+                <span class="text-[10px] font-mono text-purple-600">${order.order_token}</span>
+              </div>
+              <p class="text-xs font-bold text-slate-900">${order.items_summary}</p>
+              <p class="text-sm font-black text-purple-700">Total Due: ₱${Number(order.amount).toFixed(2)}</p>
+            </div>
+          ` : "";
+
           box.className = "mt-4 p-5 bg-gradient-to-br from-emerald-50 to-teal-50 ring-1 ring-emerald-200 rounded-2xl text-xs text-slate-800 shadow-sm";
           box.innerHTML = `
             <div class="space-y-3.5">
@@ -1167,16 +1183,20 @@
                 </button>
               </div>
 
+              ${orderBannerHtml}
+
               <div>
                 <label class="block text-xs font-bold text-slate-700 mb-1">Payment Amount (₱):</label>
-                <input type="number" id="payStaffAmount" step="0.01" min="1" placeholder="e.g. 50.00"
-                       class="w-full text-lg font-extrabold text-purple-900 rounded-xl border border-slate-300 p-2.5 focus:ring-2 focus:ring-purple-400 focus:outline-none">
+                <input type="number" id="payStaffAmount" step="0.01" min="1" placeholder="e.g. 50.00" value="${prefillAmt}" ${order ? "readonly" : ""}
+                       class="w-full text-lg font-extrabold text-purple-900 rounded-xl border border-slate-300 p-2.5 focus:ring-2 focus:ring-purple-400 focus:outline-none ${order ? "bg-slate-100 cursor-not-allowed" : ""}">
+                ${order ? "" : `
                 <div class="grid grid-cols-4 gap-1.5 mt-2">
                   <button type="button" onclick="document.getElementById('payStaffAmount').value=20" class="py-1 bg-white hover:bg-purple-100 border border-purple-200 rounded-lg text-xs font-bold text-purple-800 transition">₱20</button>
                   <button type="button" onclick="document.getElementById('payStaffAmount').value=50" class="py-1 bg-white hover:bg-purple-100 border border-purple-200 rounded-lg text-xs font-bold text-purple-800 transition">₱50</button>
                   <button type="button" onclick="document.getElementById('payStaffAmount').value=100" class="py-1 bg-white hover:bg-purple-100 border border-purple-200 rounded-lg text-xs font-bold text-purple-800 transition">₱100</button>
                   <button type="button" onclick="document.getElementById('payStaffAmount').value=200" class="py-1 bg-white hover:bg-purple-100 border border-purple-200 rounded-lg text-xs font-bold text-purple-800 transition">₱200</button>
                 </div>
+                `}
               </div>
 
               <div>
@@ -1186,14 +1206,14 @@
               </div>
 
               <div>
-                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Remarks / Items (optional):</label>
-                <input type="text" id="payStaffRemarks" placeholder="e.g. Snack & Drink" value="Canteen Purchase"
-                       class="w-full text-xs rounded-xl border border-slate-300 p-2 focus:ring-2 focus:ring-purple-400 focus:outline-none">
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Remarks / Items:</label>
+                <input type="text" id="payStaffRemarks" placeholder="e.g. Snack & Drink" value="${prefillItems.replace(/"/g, '&quot;')}" ${order ? "readonly" : ""}
+                       class="w-full text-xs rounded-xl border border-slate-300 p-2 focus:ring-2 focus:ring-purple-400 focus:outline-none ${order ? "bg-slate-100 text-slate-700" : ""}">
               </div>
 
-              <button type="button" id="payStaffBtn" onclick="submitStudentPayment('${data.staff.staff_id}', '${data.staff.full_name}')"
+              <button type="button" id="payStaffBtn" onclick="submitStudentPayment('${data.staff.staff_id}', '${data.staff.full_name}', '${orderToken}')"
                       class="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-xs rounded-xl shadow-md transition active:scale-95 flex items-center justify-center gap-1.5">
-                <span>💸</span><span>Confirm & Pay Cashier</span>
+                <span>💸</span><span>${order ? `Confirm & Pay ₱${prefillAmt}` : "Confirm & Pay Cashier"}</span>
               </button>
             </div>
           `;
@@ -1205,7 +1225,7 @@
       .catch(() => showNotification("Error verifying staff QR", "error"));
     }
 
-    function submitStudentPayment(staffId, staffName) {
+    function submitStudentPayment(staffId, staffName, orderToken = "") {
       const amtInput = document.getElementById("payStaffAmount");
       const pinInput = document.getElementById("payStaffPin");
       const remarksInput = document.getElementById("payStaffRemarks");
@@ -1238,7 +1258,8 @@
           staff_id: staffId,
           amount: amount,
           pin: pin,
-          remarks: remarks
+          remarks: remarks,
+          order_token: orderToken
         })
       })
       .then(r => r.json())
@@ -1584,9 +1605,10 @@
           if (hName) hName.textContent = st.full_name;
           const hImg = document.getElementById("headerAvatarImg");
           const hInitial = document.getElementById("headerAvatarInitial");
-          if (st.profile_pic) {
+          if (st.profile_pic || st.has_avatar) {
+            const avatarUrl = `/student/avatar/${st.student_id}?t=${Date.now()}`;
             if (hImg) {
-              hImg.src = `/static/uploads/${st.profile_pic}?t=${Date.now()}`;
+              hImg.src = avatarUrl;
               hImg.classList.remove("hidden");
             }
             if (hInitial) hInitial.classList.add("hidden");
@@ -1608,9 +1630,10 @@
           if (wGradeStrand) wGradeStrand.textContent = `ID: ${st.school_id} • ${st.grade_level} ${st.strand}`;
           const wImg = document.getElementById("walletCardAvatarImg");
           const wInitial = document.getElementById("walletCardAvatarInitial");
-          if (st.profile_pic) {
+          if (st.profile_pic || st.has_avatar) {
+            const avatarUrl = `/student/avatar/${st.student_id}?t=${Date.now()}`;
             if (wImg) {
-              wImg.src = `/static/uploads/${st.profile_pic}?t=${Date.now()}`;
+              wImg.src = avatarUrl;
               wImg.classList.remove("hidden");
             }
             if (wInitial) wInitial.classList.add("hidden");
@@ -1629,9 +1652,10 @@
           const mImg = document.getElementById("modalAvatarImg");
           const mInitial = document.getElementById("modalAvatarInitial");
           const removeBtn = document.getElementById("removePhotoBtn");
-          if (st.profile_pic) {
+          if (st.profile_pic || st.has_avatar) {
+            const avatarUrl = `/student/avatar/${st.student_id}?t=${Date.now()}`;
             if (mImg) {
-              mImg.src = `/static/uploads/${st.profile_pic}?t=${Date.now()}`;
+              mImg.src = avatarUrl;
               mImg.classList.remove("hidden");
             }
             if (mInitial) mInitial.classList.add("hidden");
@@ -1701,8 +1725,8 @@
         <div class="flex flex-col sm:flex-row items-center gap-4 bg-purple-50/60 p-4 rounded-2xl border border-purple-100">
           <div class="relative group">
             <div id="modalAvatarPreview" class="w-20 h-20 rounded-2xl ring-4 ring-white shadow-md bg-gradient-to-br from-purple-600 to-pink-600 text-white flex items-center justify-center font-extrabold text-2xl overflow-hidden shrink-0">
-              {% if student.profile_pic %}
-                <img id="modalAvatarImg" src="{{ url_for('static', filename='uploads/' + student.profile_pic) }}" alt="Preview" class="w-full h-full object-cover">
+              {% if student.profile_pic or student.profile_pic_data %}
+                <img id="modalAvatarImg" src="{{ url_for('student_avatar', student_id=student.student_id, v=student.profile_pic or '1') }}" alt="Preview" class="w-full h-full object-cover" onerror="this.classList.add('hidden'); var i=document.getElementById('modalAvatarInitial'); if(i) i.classList.remove('hidden');">
                 <span id="modalAvatarInitial" class="hidden">{{ student.full_name[:1]|upper }}</span>
               {% else %}
                 <img id="modalAvatarImg" src="" alt="Preview" class="w-full h-full object-cover hidden">
@@ -1720,7 +1744,7 @@
               <label for="profPicInput" class="px-3 py-1 bg-white hover:bg-purple-50 text-purple-700 font-bold text-xs rounded-lg border border-purple-200 shadow-sm cursor-pointer transition">
                 Choose Photo
               </label>
-              <button type="button" id="removePhotoBtn" onclick="removeSelectedPhoto()" class="px-2.5 py-1 bg-white hover:bg-rose-50 text-rose-600 font-bold text-xs rounded-lg border border-rose-200 shadow-sm transition {{ '' if student.profile_pic else 'hidden' }}">
+              <button type="button" id="removePhotoBtn" onclick="removeSelectedPhoto()" class="px-2.5 py-1 bg-white hover:bg-rose-50 text-rose-600 font-bold text-xs rounded-lg border border-rose-200 shadow-sm transition {{ '' if (student.profile_pic or student.profile_pic_data) else 'hidden' }}">
                 Remove
               </button>
             </div>

@@ -315,11 +315,27 @@ def init_sqlite_db(db_path):
             icon VARCHAR(20) DEFAULT '🍽️',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS pending_counter_orders (
+            order_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_token VARCHAR(64) UNIQUE NOT NULL,
+            staff_id INTEGER NOT NULL,
+            amount NUMERIC(10, 2) NOT NULL,
+            items_summary TEXT,
+            cart_json TEXT,
+            status VARCHAR(20) DEFAULT 'pending',
+            paid_by_student_id INTEGER,
+            paid_by_name VARCHAR(100),
+            transaction_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            paid_at DATETIME
+        );
         """
     )
     for stmt in (
         "ALTER TABLE students ADD COLUMN dynamic_qr_token VARCHAR(64) DEFAULT NULL",
         "ALTER TABLE students ADD COLUMN dynamic_qr_expires_at BIGINT DEFAULT NULL",
+        "ALTER TABLE students ADD COLUMN profile_pic_data TEXT DEFAULT NULL",
         "ALTER TABLE admins ADD COLUMN status VARCHAR(20) DEFAULT 'approved'",
         "ALTER TABLE admins ADD COLUMN is_main_admin INTEGER DEFAULT 0",
         "ALTER TABLE staff ADD COLUMN status VARCHAR(20) DEFAULT 'approved'",
@@ -491,6 +507,24 @@ def ensure_mysql_schema(conn):
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pending_counter_orders (
+                order_id INT AUTO_INCREMENT PRIMARY KEY,
+                order_token VARCHAR(64) UNIQUE NOT NULL,
+                staff_id INT NOT NULL,
+                amount DECIMAL(10, 2) NOT NULL,
+                items_summary TEXT,
+                cart_json LONGTEXT,
+                status VARCHAR(20) DEFAULT 'pending',
+                paid_by_student_id INT DEFAULT NULL,
+                paid_by_name VARCHAR(100) DEFAULT NULL,
+                transaction_id INT DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                paid_at DATETIME DEFAULT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
         for tbl in ("students", "admins", "staff"):
             try:
                 cur.execute(f"ALTER TABLE {tbl} MODIFY COLUMN password VARCHAR(255) NOT NULL")
@@ -498,6 +532,10 @@ def ensure_mysql_schema(conn):
                 pass
         try:
             cur.execute("ALTER TABLE students ADD COLUMN profile_pic VARCHAR(255) DEFAULT NULL")
+        except Exception:
+            pass
+        try:
+            cur.execute("ALTER TABLE students ADD COLUMN profile_pic_data MEDIUMTEXT DEFAULT NULL")
         except Exception:
             pass
         try:
