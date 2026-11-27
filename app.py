@@ -1,6 +1,6 @@
 from decimal import Decimal
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask import Flask, render_template, request, redirect, url_for, session, flash, Response, send_file, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash, Response, send_file, jsonify, g
 import os, sys, re, datetime, random, uuid, io, csv, smtplib, qrcode, time, json, threading
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -361,12 +361,11 @@ def signup():
 
 # ---------------- Multi-Tab Role-Independent Session Helpers ----------------
 def _get_logged_in_student():
-    if session.get("role") != "student":
-        return None
     student_id = session.get("student_id")
-    student_email = session.get("student_email") or session.get("email")
+    student_email = session.get("student_email") or (session.get("email") if session.get("role") == "student" else None)
     if not student_id and not student_email:
         return None
+    conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
@@ -375,22 +374,26 @@ def _get_logged_in_student():
         else:
             cursor.execute("SELECT * FROM students WHERE email=%s", (student_email,))
         student = cursor.fetchone()
-        conn.close()
         if student:
             session["student_id"] = student["student_id"]
             session["student_email"] = student["email"]
         return student
     except Exception:
         return None
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def _get_logged_in_staff():
-    if session.get("role") != "staff":
-        return None
     staff_id = session.get("staff_id")
-    staff_email = session.get("staff_email") or session.get("email")
+    staff_email = session.get("staff_email") or (session.get("email") if session.get("role") == "staff" else None)
     if not staff_id and not staff_email:
         return None
+    conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
@@ -405,7 +408,6 @@ def _get_logged_in_staff():
                 (staff_email,),
             )
         staff = cursor.fetchone()
-        conn.close()
         if staff:
             if str(staff.get("status") or "approved").strip().lower() != "approved":
                 return None
@@ -414,15 +416,20 @@ def _get_logged_in_staff():
         return staff
     except Exception:
         return None
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def _get_logged_in_admin():
-    if session.get("role") != "admin":
-        return None
     admin_id = session.get("admin_id")
-    admin_email = session.get("admin_email") or session.get("email")
+    admin_email = session.get("admin_email") or (session.get("email") if session.get("role") == "admin" else None)
     if not admin_id and not admin_email:
         return None
+    conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
@@ -437,7 +444,6 @@ def _get_logged_in_admin():
                 (admin_email,),
             )
         admin = cursor.fetchone()
-        conn.close()
         if admin:
             if str(admin.get("status") or "approved").strip().lower() != "approved":
                 return None
@@ -447,6 +453,12 @@ def _get_logged_in_admin():
         return admin
     except Exception:
         return None
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 # ---------------- Admin Pending Top-Ups ----------------
@@ -537,15 +549,39 @@ def dashboard_transactions():
 @app.route("/logout")
 def logout():
     ref = (request.referrer or "").lower()
-    role = request.args.get("role") or session.get("role")
-    if "/dashboard/staff" in ref or "/staff" in ref:
-        role = "staff"
-    elif "/dashboard/admin" in ref or "/admin" in ref:
-        role = "admin"
-    elif "/dashboard/student" in ref or "/student" in ref:
-        role = "student"
+    explicit_role = request.args.get("role")
+    role = explicit_role or session.get("role")
+    if not explicit_role:
+        if "/dashboard/staff" in ref or "/staff" in ref:
+            role = "staff"
+        elif "/dashboard/admin" in ref or "/admin" in ref:
+            role = "admin"
+        elif "/dashboard/student" in ref or "/student" in ref:
+            role = "student"
 
-    session.clear()
+    if role == "staff":
+        for k in ("staff_id", "staff_email", "pending_otp_staff", "pending_email_staff"):
+            session.pop(k, None)
+    elif role == "admin":
+        for k in ("admin_id", "admin_email", "is_main_admin", "pending_otp_admin", "pending_email_admin"):
+            session.pop(k, None)
+    else:
+        for k in ("student_id", "student_email", "student_name", "pending_otp_student", "pending_email_student"):
+            session.pop(k, None)
+
+    if session.get("role") == role:
+        if session.get("admin_id"):
+            session["role"] = "admin"
+        elif session.get("staff_id"):
+            session["role"] = "staff"
+        elif session.get("student_id"):
+            session["role"] = "student"
+        else:
+            session.clear()
+
+    if not session.get("admin_id") and not session.get("staff_id") and not session.get("student_id"):
+        session.clear()
+
     flash("You have been safely logged out.", "success")
     if role == "staff":
         return redirect(url_for("signin_staff"))
@@ -628,43 +664,74 @@ _LAST_MYSQL_CHECK = 0
 _MYSQL_CHECK_COOLDOWN = 30  # Re-check MySQL every 30 seconds if offline
 
 
+def _track_conn(conn):
+    """Track opened DB connections in Flask request context so teardown closes any unclosed connection."""
+    try:
+        conns = getattr(g, "_db_conns", None)
+        if conns is None:
+            conns = []
+            g._db_conns = conns
+        conns.append(conn)
+    except Exception:
+        pass
+    return conn
+
+
+@app.teardown_appcontext
+def _close_tracked_db_connections(exc=None):
+    try:
+        conns = getattr(g, "_db_conns", None) or []
+        g._db_conns = []
+        for c in conns:
+            try:
+                c.close()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def get_connection():
     global _SQLITE_INITIALIZED, _ACTIVE_DB_TYPE, _ACTIVE_PYMYSQL_PORT, _LAST_MYSQL_CHECK
     now = time.time()
+    target_host = app.config.get("MYSQL_HOST", "localhost")
+    is_remote = target_host not in ("localhost", "127.0.0.1")
 
     # 1. Primary: Direct PyMySQL connection to MySQL (Local or Cloud Aiven)
-    if _ACTIVE_DB_TYPE != "sqlite" or (now - _LAST_MYSQL_CHECK > _MYSQL_CHECK_COOLDOWN):
+    if is_remote or _ACTIVE_DB_TYPE != "sqlite" or (now - _LAST_MYSQL_CHECK > _MYSQL_CHECK_COOLDOWN):
         try:
             import pymysql
-            target_host = app.config.get("MYSQL_HOST", "localhost")
             target_port = int(app.config.get("MYSQL_PORT", 3306))
-            is_remote = target_host not in ("localhost", "127.0.0.1")
             is_ssl = app.config.get("MYSQL_SSL", False) or is_remote
             ssl_kwargs = {"ssl": {"ssl_mode": "REQUIRED"}} if is_ssl else {}
 
             ports_to_try = [target_port] if is_remote else ([_ACTIVE_PYMYSQL_PORT] if _ACTIVE_PYMYSQL_PORT else [target_port, 3306, 3307])
-            for port in set(ports_to_try):
-                if not port:
-                    continue
-                try:
-                    conn = pymysql.connect(
-                        host=target_host,
-                        port=port,
-                        user=app.config.get("MYSQL_USER", "school_user"),
-                        password=app.config.get("MYSQL_PASSWORD", "qrcode12345!"),
-                        database=app.config.get("MYSQL_DB", "school_system"),
-                        autocommit=True,
-                        charset="utf8mb4",
-                        init_command="SET time_zone = '+08:00'",
-                        connect_timeout=8.0 if is_remote else 1.5,
-                        **ssl_kwargs
-                    )
-                    ensure_mysql_schema(conn)
-                    _ACTIVE_DB_TYPE = "pymysql"
-                    _ACTIVE_PYMYSQL_PORT = port
-                    return conn
-                except Exception:
-                    continue
+            max_attempts = 2 if is_remote else 1
+            for _attempt in range(max_attempts):
+                for port in set(ports_to_try):
+                    if not port:
+                        continue
+                    try:
+                        conn = pymysql.connect(
+                            host=target_host,
+                            port=port,
+                            user=app.config.get("MYSQL_USER", "school_user"),
+                            password=app.config.get("MYSQL_PASSWORD", "qrcode12345!"),
+                            database=app.config.get("MYSQL_DB", "school_system"),
+                            autocommit=True,
+                            charset="utf8mb4",
+                            init_command="SET time_zone = '+08:00'",
+                            connect_timeout=8.0 if is_remote else 1.5,
+                            **ssl_kwargs
+                        )
+                        ensure_mysql_schema(conn)
+                        _ACTIVE_DB_TYPE = "pymysql"
+                        _ACTIVE_PYMYSQL_PORT = port
+                        return _track_conn(conn)
+                    except Exception:
+                        continue
+                if is_remote and _attempt == 0:
+                    time.sleep(0.2)
         except ImportError:
             pass
 
@@ -681,17 +748,18 @@ def get_connection():
                         pass
                     ensure_mysql_schema(conn)
                     _ACTIVE_DB_TYPE = "flask_mysql"
-                    return conn
+                    return _track_conn(conn)
             except Exception:
                 pass
 
     # 2. Fallback to local SQLite database ONLY if MySQL is completely offline
-    _ACTIVE_DB_TYPE = "sqlite"
-    _LAST_MYSQL_CHECK = now
+    if not is_remote:
+        _ACTIVE_DB_TYPE = "sqlite"
+        _LAST_MYSQL_CHECK = now
     if not _SQLITE_INITIALIZED:
         init_sqlite_db(_SQLITE_FALLBACK_PATH)
         _SQLITE_INITIALIZED = True
-    return SQLiteCompatConnection(_SQLITE_FALLBACK_PATH)
+    return _track_conn(SQLiteCompatConnection(_SQLITE_FALLBACK_PATH))
 
 
 def hash_user_password(password):
@@ -1277,7 +1345,9 @@ def login():
         student = cursor.fetchone()
         if student and verify_user_password(student[2], password):
             conn.close()
-            session.clear()
+            session.pop("pending_signup", None)
+            session.pop("student_signup", None)
+            session.pop("password_reset_flow", None)
             session["role"] = "student"
             session["student_id"] = student[0]
             session["student_email"] = student[1]
@@ -1290,7 +1360,9 @@ def login():
         admin = cursor.fetchone()
         if admin and verify_user_password(admin[2], password):
             conn.close()
-            session.clear()
+            session.pop("pending_signup", None)
+            session.pop("student_signup", None)
+            session.pop("password_reset_flow", None)
             session["role"] = "admin"
             session["admin_id"] = admin[0]
             session["admin_email"] = admin[1]
@@ -1303,7 +1375,9 @@ def login():
         staff = cursor.fetchone()
         if staff and verify_user_password(staff[2], password):
             conn.close()
-            session.clear()
+            session.pop("pending_signup", None)
+            session.pop("student_signup", None)
+            session.pop("password_reset_flow", None)
             session["role"] = "staff"
             session["staff_id"] = staff[0]
             session["staff_email"] = staff[1]
@@ -1694,7 +1768,9 @@ def _attempt_role_login(email_input, password, preferred_role="student"):
             flash(f"❌ Incorrect password for {email_clean}. Please check your password or use Forgot Password.", "error")
             return redirect(url_for("signin_student"))
 
-        session.clear()
+        session.pop("pending_signup", None)
+        session.pop("student_signup", None)
+        session.pop("password_reset_flow", None)
         session["role"] = "student"
         session["student_id"] = row[0]
         session["student_email"] = row[1]
@@ -1725,7 +1801,9 @@ def _attempt_role_login(email_input, password, preferred_role="student"):
             flash("🚫 Access Denied: Your Canteen Staff account registration was rejected or deactivated by the Main Administrator.", "error")
             return redirect(url_for("signin_staff"))
 
-        session.clear()
+        session.pop("pending_signup", None)
+        session.pop("student_signup", None)
+        session.pop("password_reset_flow", None)
         session["role"] = "staff"
         session["staff_id"] = row[0]
         session["staff_email"] = row[1]
@@ -1756,7 +1834,9 @@ def _attempt_role_login(email_input, password, preferred_role="student"):
             flash("🚫 Access Denied: Your Admin account registration was rejected or deactivated by the Main Administrator.", "error")
             return redirect(url_for("signin_admin"))
 
-        session.clear()
+        session.pop("pending_signup", None)
+        session.pop("student_signup", None)
+        session.pop("password_reset_flow", None)
         session["role"] = "admin"
         session["admin_id"] = row[0]
         session["admin_email"] = row[1]
@@ -2205,7 +2285,6 @@ def dashboard_student():
     balance_dates = [row["date"].strftime("%Y-%m-%d") for row in balance_data]
     balance_values = [float(row["new_balance"]) if row["new_balance"] is not None else 0.0 for row in balance_data]
 
-    # ⚠️ Do not manually close conn here — Flask handles teardown
     # Pending top-ups
     cursor.execute("""
         SELECT topup_id, amount, reference_number, status, created_at
@@ -2214,6 +2293,7 @@ def dashboard_student():
         ORDER BY created_at DESC
     """, (student["student_id"],))
     pending_topups = cursor.fetchall() or []
+    conn.close()
 
     # ✅ Safe render_template return
     return render_template(
@@ -3248,6 +3328,9 @@ def dashboard_admin():
         for s in all_staff if str(s.get("status") or "").lower() == "pending"
     ]
 
+    trending_recs = _get_trending_canteen_recommendations(cursor)
+    conn.close()
+
     return render_template(
         "dashboard_admin.html",
         admin=admin,  # ✅ pass the single admin record
@@ -3273,7 +3356,7 @@ def dashboard_admin():
         all_admins=all_admins,
         all_staff=all_staff,
         pending_account_approvals=pending_account_approvals,
-        trending_recommendations=_get_trending_canteen_recommendations(cursor)
+        trending_recommendations=trending_recs
     )
 
 
@@ -3984,7 +4067,7 @@ def dashboard_staff():
         WHERE staff_id=%s
         GROUP BY DATE(created_at), type
         ORDER BY date
-    """, (session["staff_id"],))
+    """, (staff["staff_id"],))
     txn_data = cursor.fetchall()
     txn_dates = sorted(set([row["date"].strftime("%Y-%m-%d") for row in txn_data]))
     txn_topups = [sum(row["cnt"] for row in txn_data if row["date"].strftime("%Y-%m-%d")==d and row["type"]=="topup") for d in txn_dates]
@@ -4067,11 +4150,6 @@ def dashboard_staff():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        try:
-            cursor.execute("ALTER TABLE canteen_products ADD COLUMN stock INT DEFAULT 50")
-            conn.commit()
-        except Exception:
-            pass
         cursor.execute("SELECT product_id, name, description, category, price, image_path, icon, stock FROM canteen_products ORDER BY product_id ASC")
         canteen_products = cursor.fetchall() or []
         if not canteen_products:
@@ -4094,9 +4172,12 @@ def dashboard_staff():
     except Exception as e:
         print("canteen_products load notice:", e)
 
+    staff_analytics = _get_staff_sales_analytics(cursor, "daily")
+    conn.close()
+
     return render_template("dashboard_staff.html",
                            staff=staff,
-                           staff_id=session["staff_id"],
+                           staff_id=staff["staff_id"],
                            staff_transactions=staff_transactions,
                            todays_transactions=todays_transactions,
                            staff_totals=staff_totals,
@@ -4117,7 +4198,7 @@ def dashboard_staff():
                            gcash_sales_total=gcash_sales_total,
                            gcash_orders_count=gcash_orders_count,
                            canteen_products=canteen_products,
-                           staff_analytics=_get_staff_sales_analytics(cursor, "daily"))
+                           staff_analytics=staff_analytics)
 
 
 # Add New Canteen Product (with Picture, Name, Price, Stock)
